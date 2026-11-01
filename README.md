@@ -33,7 +33,7 @@ Requires local desktop VS Code 1.100+. This is a preview, currently with a Korea
 
 Submitting the prediction reveals the proposal and returns focus to your code. **⌘⌥T / Ctrl+Alt+T** returns to the change. Continuing never automatically accepts it. **×** ends guidance and preserves edits.
 
-For a real project, choose an existing foreground **VS Code task** once. Later checks reuse it; a changed task definition requires selection again. **검사 옵션** lets you change tasks or compare without running one. The latter never saves files. Task progress, exit status, and available problem-matcher diagnostics appear beside the code. Tasks without a process exit remain **unverified**, not passed. Editing a reviewed file during or after execution invalidates that result. Checks run through VS Code's normal task system, including the task's own behavior and dependencies; no command comes from the AI plan.
+For a real project, choose an existing foreground **VS Code task** once. The picker describes and applies `task.saveBeforeRun: never` so VS Code does not silently save unrelated dirty editors. This changes the workspace task preference (or the user preference if no folder is open); cancel or choose comparison to leave it unchanged. Later checks reuse it; a changed task definition requires selection again. **검사 옵션** lets you change tasks or compare without running one. The latter never saves files. Task progress, exit status, and available problem-matcher diagnostics appear beside the code. Tasks without a process exit remain **unverified**, not passed. Editing a reviewed file during or after execution invalidates that result. Checks run through VS Code's normal task system, including the task's own behavior and dependencies; no command comes from the AI plan.
 
 For the video's deliberately wrong proposal, open [`examples/judgment`](examples/judgment/README.md) as a folder and import `plan.json`. Its check task is included. Demo and imported plans work offline without sign-in.
 
@@ -104,7 +104,7 @@ See [the schema](plan.schema.json) and [a complete example](examples/plan.json).
 
 - Existing local text files only; no new-file, rename, remote workspace, or binary plans.
 - Exact text comparison, including whitespace. Edits outside the planned region pause acceptance. Files changed earlier in the plan are also checked.
-- A 64 KiB file limit, up to 20 plan steps, and no automatic commands or tests.
+- A 64 KiB file limit and up to 20 plan steps. Existing tasks run only after your explicit action; commands cannot come from the AI plan.
 - One ChatGPT account binding per installation. Simultaneous authentication from multiple VS Code windows is not supported; use one window for connected requests.
 - Session progress is in memory. Closing VS Code ends the guide; your normal editor save/restore behavior still applies. MCP plans remain on disk until removed or replaced.
 - VS Code completion and format-on-type settings still apply; the extension does not disable your existing assistance or prove that every character was manually typed.

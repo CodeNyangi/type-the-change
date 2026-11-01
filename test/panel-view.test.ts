@@ -136,6 +136,7 @@ test('commands and accessible names stay within the CSP and host allowlist',()=>
 test('keyboard-only prediction, check and explicit decision never accept on a continuation shortcut',()=>{
  const v=view();v.update({...step,judgment:{phase:'predict',prediction:'',evidence:''}});
  v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusStep'}}));assert.equal(v.document.activeElement?.id,'prediction');
+ v.get<HTMLTextAreaElement>('prediction').value='작성 중';v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'advance'},'the native continuation binding does not also submit a prediction');
  v.get<HTMLTextAreaElement>('prediction').value='결과 30';v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'predict',prediction:'결과 30'});
  v.update(step);assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);
  v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'advance'});

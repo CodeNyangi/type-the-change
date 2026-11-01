@@ -378,6 +378,9 @@ async function testCommands(extension:vscode.Extension<ExtensionApi>){
 }
 
 async function testIntegratedChecks(api:ExtensionApi,root:string){
+  // The task picker explicitly offers this preference in ordinary use. Configure
+  // the isolated test workspace here; picker consent is covered separately.
+  await vscode.workspace.getConfiguration('task').update('saveBeforeRun','never',vscode.ConfigurationTarget.Workspace);
   const unrelated=path.join(root,'unrelated.ts');await writeFile(unrelated,'export const untouched = 1;\n');
   const other=await vscode.workspace.openTextDocument(unrelated);await replaceDocument(other,'export const untouched = 2;\n');
   await vscode.commands.executeCommand('typeTheChange.demo');

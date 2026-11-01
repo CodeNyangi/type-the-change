@@ -207,7 +207,11 @@ try {
   await page.screenshot({path:path.join(artifacts,'learning-first-look.png')});
   await predict(view,'[10, -5, 20]의 합계는 30이 되어야 한다.');
   await focusSource(view);await page.keyboard.type('      break;');await statusIs(view,'editing');
-  await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
+  await page.keyboard.press('Control+Alt+Enter');
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'음수 합계 검사'}).waitFor({state:'visible'});
+  assert.ok((await page.locator('.quick-input-list').innerText()).includes('전체 자동 저장'));
+  await page.keyboard.press('Enter');
+  await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
   await until(async()=>(await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')),'The diff must show the actual alternative.');
   await decide(view,'reject','break도 반복을 끝내므로 뒤의 20을 놓친다.');await statusIs(view,'rejected');
   await page.screenshot({path:path.join(artifacts,'reject-alternative.png')});

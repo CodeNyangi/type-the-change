@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import {readFile,mkdtemp,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
-import {parsePlan,resolveStep,inspectStep,validatePlanAgainstFiles,validateRelativePath,type Plan,type ResolvedStep} from './plan.js';
+import {parsePlan,resolveStep,inspectStep,validatePlanAgainstFiles,type Plan,type ResolvedStep} from './plan.js';
 import {readWorkspaceFile,readBridgeFile,writeBridgeFile,assertDistinctWorkspaceFiles,WorkspaceFileError,MAX_SOURCE_BYTES} from './workspace-files.js';
 import {AuthError,ChatGPTAuth} from './auth.js';
 import {createAccountLock} from './account-lock.js';
@@ -156,7 +156,7 @@ export function activate(context:vscode.ExtensionContext){
   }
   async function chooseCheck(){const s=session;if(!s||s.checking)return;await checks.select(s.root,true,s.demoTask);}
   async function runCheck(){
-    const s=session;if(!s||s.checking)return;
+    const s=session;if(!s?.ready||s.checking)return;
     if(!s.judgment.prediction){await panel.focusStep();return;}
     s.checking=true;render();
     try{

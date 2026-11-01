@@ -25,13 +25,21 @@ export class TaskChecks implements vscode.Disposable {
     return (await vscode.tasks.fetchTasks()).filter(task=>!task.isBackground&&!!task.execution&&(typeof task.scope!=='object'||path.resolve(task.scope.uri.fsPath)===path.resolve(root)));
   }
   async select(root:string,force=false,demo?:vscode.Task):Promise<vscode.Task|'compare'|undefined>{
-    if(demo)return demo;
-    const tasks=await this.candidates(root),key=this.key(root),saved=this.choices.get(key)??this.storage.get<string>(key);
+    const saveConfiguration=vscode.workspace.getConfiguration('task');
+    const configureSaving=saveConfiguration.get<string>('saveBeforeRun','always')!=='never';
+    if(demo&&!configureSaving)return demo;
+    const tasks=demo?[demo]:await this.candidates(root),key=this.key(root),saved=this.choices.get(key)??this.storage.get<string>(key);
     const previous=tasks.find(task=>fingerprint(task)===saved);
-    if(previous&&!force)return previous;
-    const items=tasks.sort((a,b)=>Number(b.group?.id===vscode.TaskGroup.Test.id)-Number(a.group?.id===vscode.TaskGroup.Test.id)).map(task=>({label:task.name,description:task.source,detail:task.group?.id===vscode.TaskGroup.Test.id?'테스트':task.group?.id===vscode.TaskGroup.Build.id?'빌드':undefined,task}));
+    if(previous&&!force&&!configureSaving)return previous;
+    const workspaceScope=!!vscode.workspace.workspaceFolders?.length;
+    const saveNote=configureSaving?`선택하면 ${workspaceScope?'이 작업 공간':'VS Code 전체'}의 작업 실행 전 전체 자동 저장을 끕니다. 검토 파일만 저장합니다.`:undefined;
+    const items=tasks.sort((a,b)=>Number(b.group?.id===vscode.TaskGroup.Test.id)-Number(a.group?.id===vscode.TaskGroup.Test.id)).map(task=>({label:task.name,description:task.source,detail:saveNote??(task.group?.id===vscode.TaskGroup.Test.id?'테스트':task.group?.id===vscode.TaskGroup.Build.id?'빌드':undefined),task}));
     const selected=await vscode.window.showQuickPick([...items,{label:'검사 없이 비교',description:'이번 변경은 직접 근거 확인',detail:undefined,task:undefined}],{title:'저장하고 실행할 검사',placeHolder:tasks.length?'처음 한 번 선택 · 다음부터 같은 검사 실행':'설정된 검사가 없어요 · VS Code Tasks에서 추가할 수 있어요'});
     if(!selected?.task)return selected?'compare':undefined;
+    // VS Code otherwise saves every dirty editor, including unrelated work.
+    // The picker explicitly describes this persistent setting before selection.
+    if(configureSaving)await saveConfiguration.update('saveBeforeRun','never',workspaceScope?vscode.ConfigurationTarget.Workspace:vscode.ConfigurationTarget.Global);
+    if(vscode.workspace.getConfiguration('task').get<string>('saveBeforeRun')!=='never')throw Error('검토 파일만 저장하는 설정을 적용하지 못했어요. 검사 없이 비교할 수 있어요.');
     const id=fingerprint(selected.task);this.choices.set(key,id);await this.storage.update(key,id);return selected.task;
   }
   cancel(){
@@ -56,6 +64,7 @@ export class TaskChecks implements vscode.Disposable {
     const subscriptions=[vscode.tasks.onDidEndTaskProcess(processEnd),vscode.tasks.onDidEndTask(taskEnd)];
     report({task:task.name,status:'running',sourceHash:hash,durationMs:0,details:[]});
     try{
+      if(vscode.workspace.getConfiguration('task').get<string>('saveBeforeRun')!=='never')throw Error('Save policy changed');
       // Mutating the fetched task's presentation does not rewrite tasks.json and
       // preserves provider-owned task dependencies and execution semantics.
       task.presentationOptions={...task.presentationOptions,reveal:vscode.TaskRevealKind.Never,focus:false,showReuseMessage:false};

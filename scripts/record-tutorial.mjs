@@ -67,7 +67,7 @@ try{
   subtitle('2. Ctrl+Alt+Enter. 저장하고 검사합니다.');
   await page.keyboard.press('Control+Alt+Enter');
   await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'합계 동작 검사'}).waitFor({state:'visible'});
-  subtitle('검사는 처음 한 번 선택합니다.');await pause(1400);await page.keyboard.press('Enter');
+  subtitle('처음 한 번 선택. 검토 파일만 저장하도록 설정합니다.');await pause(1400);await page.keyboard.press('Enter');
   await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});
   await view.waitForFunction(()=>document.activeElement?.id==='evidence');
   assert.equal(await page.locator('.terminal-wrapper').first().isVisible(),false);
