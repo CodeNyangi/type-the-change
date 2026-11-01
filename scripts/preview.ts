@@ -3,13 +3,13 @@ import {createServer} from 'node:http';
 import {panelHtml} from '../src/panel-view.js';
 const nonce='local-preview-only';
 const bootstrap=`
-let panelState={files:[],connected:false};let step=0;
+let panelState={files:[],connected:false};let step=0;let current='';
 const stages=[
  {title:'음수 가격 제외',file:'price.ts',line:3,reason:'0 이상의 가격만 합계에 포함합니다.',before:'    result += price;',after:'    if (price >= 0) {\\n      result += price;\\n    }',step:1,total:2},
  {title:'합계 반환',file:'price.ts',line:6,reason:'계산한 합계를 호출한 곳으로 돌려줍니다.',before:'  return 0;',after:'  return result;',step:2,total:2}
 ];
 function update(s){panelState=s;window.postMessage(s,'*');}
-function guide(i){step=i;update({...panelState,...stages[i],status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false,complete:false,busy:false,error:''});}
+function guide(i){step=i;current=stages[i].before;update({...panelState,...stages[i],judgment:{phase:'predict',prediction:'',evidence:''},canKeep:false,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false,complete:false,busy:false,error:''});}
 window.acquireVsCodeApi=()=>({getState:()=>({intent:sessionStorage.getItem('draft')||''}),setState:s=>sessionStorage.setItem('draft',s.intent),postMessage:m=>{
  parent.postMessage({type:'command',...m},'*');
  switch(m.command){
@@ -18,12 +18,13 @@ window.acquireVsCodeApi=()=>({getState:()=>({intent:sessionStorage.getItem('draf
  case'chooseModel':update({...panelState,model:panelState.model==='모델 A'?'모델 B':'모델 A'});break;
  case'generate':update({...panelState,busy:true,phase:'수정안을 만드는 중',error:''});break;
  case'demo':case'import':case'loadPending':guide(0);break;
- case'next':if(panelState.canContinue){if(step===0)guide(1);else update({...panelState,complete:true});}break;
+ case'predict':update({...panelState,judgment:{phase:'edit',prediction:m.prediction,evidence:''}});break;
+ case'next':case'review':if(panelState.judgment?.prediction){parent.postMessage({type:'diff',before:panelState.before,after:current},'*');update({...panelState,judgment:{...panelState.judgment,phase:'review',reviewedHash:current}});}break;
+ case'decide':if(panelState.judgment?.phase==='review'&&(m.decision==='defer'||m.evidence)){if(m.decision==='keep'&&!panelState.canKeep)break;if(m.decision==='keep'&&step===0&&panelState.total===2)guide(1);else update({...panelState,complete:m.decision==='keep',judgment:{...panelState.judgment,phase:'done',decision:m.decision,evidence:m.evidence}});}break;
  case'focus':parent.postMessage({type:'focusEditor'},'*');break;
  case'stop':update({files:['price.ts'],connected:panelState.connected,model:panelState.model});break;
  case'signIn':update({...panelState,connected:true,model:'모델 A',notice:'연결됐어요. AI 요청에는 ChatGPT 구독 사용량이 쓰입니다.'});break;
  case'signOut':update({...panelState,connected:false,notice:''});break;
- case'review':parent.postMessage({type:'diff',before:panelState.before,after:panelState.after},'*');break;
  case'mcpConfig':parent.postMessage({type:'config'},'*');break;
  }
 }});
@@ -34,7 +35,7 @@ window.addEventListener('message',({data:m})=>{if(m?.type==='fixture'){
  if(m.name==='delete')update({...panelState,...stages[0],title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',step:1,total:1,complete:false,status:'untouched',message:'',canContinue:false,busy:false,error:'',notice:''});
  if(m.name==='long')update({...panelState,...stages[0],file:'src/한글 경로/deeply/nested/components/long-file-name.ts',title:'긴 제목에서도 코드를 읽고 수정할 수 있도록 화면을 확인합니다',after:'const result = items.filter(item => item.price >= 0).map(item => ({ ...item, total: item.price * item.quantity }));',complete:false,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false,busy:false,error:'',notice:''});
  if(m.name==='home')update({files:[],connected:false});
- if(m.name==='typing'&&panelState.file){const matched=m.value===panelState.after;update({...panelState,complete:false,status:matched?'matched':'editing',message:matched?'제안과 일치':'',canContinue:matched});}
+ if(m.name==='typing'&&panelState.file){current=m.value;const matched=current===panelState.after;update({...panelState,complete:false,status:matched?'matched':'editing',message:matched?'글자는 같아요 · 근거를 확인해 주세요.':'',canKeep:current!==panelState.before,judgment:panelState.judgment?.phase==='predict'?panelState.judgment:{...panelState.judgment,phase:'edit',reviewedHash:undefined,decision:undefined,evidence:''}});}
 }});
 `;
 const index=`<!doctype html><html lang="ko"><meta charset="utf-8"><title>Type the Change · UI 검증</title><style>body{margin:0;background:#17191c;color:#ddd;font:13px system-ui}header{padding:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#12334b}button,select{font:inherit;padding:5px 9px}main{display:flex;height:calc(100vh - 95px)}aside{flex:1;padding:24px;min-width:200px}textarea{box-sizing:border-box;width:100%;height:220px;padding:18px;background:#202020;color:#eee;font:14px/1.8 monospace;border:1px solid #555;border-radius:5px}iframe{border:0;width:460px;height:100%;background:#1e1e1e}p{color:#aaa}pre{white-space:pre-wrap}#events{height:130px;overflow:auto;font:12px monospace}</style>

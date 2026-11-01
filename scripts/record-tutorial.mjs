@@ -78,7 +78,7 @@ try{
   subtitle('거절은 판단 기록입니다. 코드는 직접 고칩니다.');
   await view.locator('#file').click();await page.waitForFunction(()=>Boolean(document.activeElement?.closest('.monaco-editor')));
   // Focus lands at the end of the current replacement, preserving normal editor selection.
-  await page.keyboard.press('Shift+Home');await page.keyboard.type('      continue;',{delay:130});await page.keyboard.press('Control+s');
+  await page.keyboard.press('Shift+Home');await page.keyboard.type('continue;',{delay:130});await page.keyboard.press('Control+s');
   await state(view,'editing');
   subtitle('내 수정: continue. 같은 입력으로 다시 확인합니다.');
   await command('View: Toggle Panel');await pause(600);await page.keyboard.type('node check.mjs',{delay:80});await page.keyboard.press('Enter');await pause(3000);
@@ -92,7 +92,8 @@ try{
   await writeFile(path.join(output,'tutorial.ko.srt'),srt);
   // Encode a shareable H.264 MP4 with burned-in Korean captions and web streaming metadata.
   await run('ffmpeg',['-y','-loglevel','error','-i',path.join(output,'capture.mp4'),'-vf',`subtitles=${path.join(output,'tutorial.ko.srt')}:force_style='FontName=Noto Sans CJK KR,FontSize=20,Outline=1,BorderStyle=3,BackColour=&H80000000,MarginV=26'`,'-c:v','libx264','-preset','medium','-crf','22','-pix_fmt','yuv420p','-movflags','+faststart','-an',path.join(output,'type-the-change-quickstart.mp4')]);
-  await run('ffmpeg',['-y','-loglevel','error','-ss','5','-t','12','-i',path.join(output,'type-the-change-quickstart.mp4'),'-vf','fps=7,scale=900:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse','-loop','0',path.join(output,'quickstart.gif')]);
+  await run('ffmpeg',['-y','-loglevel','error','-i',path.join(output,'type-the-change-quickstart.mp4'),'-vf','setpts=0.7*PTS,fps=6,scale=900:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse','-loop','0',path.join(output,'quickstart.gif')]);
+  for(const [name,time] of [['caption-start',5],['caption-test',19],['caption-decision',37]])await run('ffmpeg',['-y','-loglevel','error','-ss',String(time),'-i',path.join(output,'type-the-change-quickstart.mp4'),'-frames:v','1',path.join(output,name+'.png')]);
   await rm(path.join(output,'capture.mp4'));
   await writeFile(path.join(output,'recording.json'),JSON.stringify({success:true,durationSeconds:duration,environment:'Real VS Code 1.142.0, isolated Linux CI display',fixture:'examples/judgment',sourceCommit:process.env.GITHUB_SHA,limitations:['Deliberately wrong local exercise, not a live AI response.','One example input, not proof of general correctness or learning gain.','File dialog is substituted; all editing, comparison, terminal execution and decisions use real VS Code.','Silent video with burned-in Korean captions.']},null,2));
 }catch(error){if(page)await page.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}

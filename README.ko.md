@@ -1,44 +1,46 @@
 # Type the Change
 
-**AI가 수정할 곳을 짚고, 나는 직접 코드를 쓴다.**
+<img src="assets/icon.png" alt="열린 코드 프롬프트와 입력 커서" width="96" />
 
-[English](README.md) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases) · [문제 제보](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [참여 정책](CONTRIBUTING.md)
+**AI가 제안하고, 내가 예상하고, 확인하고, 판단합니다.**
 
-**Type the Change는 AI가 제안한 코드 변경을 직접 읽고, 입력하고, 검토하는 오픈소스 VS Code 확장입니다.** JSON 수정안, 선택적인 ChatGPT 연결, MCP(Model Context Protocol) 클라이언트로 변경 제안을 받아 사용할 수 있습니다.
+[English](README.md) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases) · [문제 제보](https://github.com/CodeNyangi/type-the-change/issues/new/choose)
 
-조건문 하나, 반환값, 작은 리팩터링처럼 AI가 제안한 변경의 세부 내용을 직접 살펴보고 싶은 개발자를 위한 도구입니다. 평소 쓰던 편집기에서 수정할 부분을 선택하고, 옆에는 변경 목표를 보여 줍니다. 코드와 이유는 **제안 보기**를 펼칠 때 나타납니다. ChatGPT 연결도 VS Code 안에서 처리하므로 Codex 데스크톱이나 CLI가 필요하지 않습니다.
+AI와 코딩하면서 내 판단을 연습하는 작은 VS Code 확장입니다. 평소 편집기에서 코드를 직접 살피고, 변경을 유지할지 결정합니다. 제안과 글자가 같다는 이유만으로 완료되지 않습니다.
 
-1. 원하는 변경을 적고 관련 파일을 고르거나, 외부 수정안을 가져옵니다.
-2. 현재 코드를 살펴보고 직접 바꿉니다. 필요할 때 제안을 펼칩니다.
-3. 언제든 변경을 비교합니다. 제안과 일치하면 다음 단계로 넘어갑니다.
+[![실제 VS Code 사용 영상](assets/quickstart.gif)](assets/type-the-change-quickstart.mp4)
 
-직접 읽고 쓰는 연습을 돕도록 설계했지만, 학습 효과가 검증되었다고 주장하지 않습니다. 코드의 일치는 제안과 글자가 같다는 뜻이며, 실제 동작은 테스트와 변경 비교로 확인해야 합니다.
+**[사용 영상 보기 →](assets/type-the-change-quickstart.mp4)** · [영상과 같은 예제](examples/judgment/README.md)
 
-## 빠른 시작: VS Code 확장 설치
+영상은 실제 VS Code에서 촬영했습니다. 일부러 틀린 연습용 제안을 실행해 보고 거절한 뒤, 다른 코드로 수정해 유지합니다. 자막이 있으며 로그인과 AI 호출 없이 따라 할 수 있습니다.
 
-로컬 데스크톱 **VS Code 1.100 이상**이 필요합니다. 초기 미리보기이며, 현재 화면 언어는 한국어입니다.
+1. **예상하기.** 제안을 보기 전에 달라질 결과를 한 줄로 적습니다.
+2. **확인하기.** 평소처럼 편집하고 직접 테스트한 다음, 변경 내역을 비교합니다.
+3. **판단하기.** 확인한 근거를 적고 **이 변경 유지 / 제안 거절 / 보류**를 고릅니다.
 
-1. [Releases](https://github.com/CodeNyangi/type-the-change/releases)에서 `.vsix`를 받습니다.
-2. VS Code 명령 팔레트에서 **Extensions: Install from VSIX…**로 설치합니다.
-3. **Type the Change: Try the Demo**를 실행합니다. 로그인 없이 됩니다.
+안내는 같은 VS Code 창에서 코드 옆에 있습니다. 제안과 다른 코드도 안내 범위 안이라면 유지할 수 있습니다. 비교한 뒤 코드가 바뀌면 근거를 다시 확인합니다. 내 수정으로 다음 제안이 맞지 않게 되면 새 계획을 요청합니다.
 
-선택된 부분을 직접 바꾼 뒤 **⌘⌥Enter**로 확인하고 다음 단계로 갑니다. Windows/Linux는 **Ctrl+Alt+Enter**입니다. **⌘⌥T / Ctrl+Alt+T**로 수정 위치에 돌아갑니다.
+판단 기록은 사용자가 확인했다는 기록입니다. 자동 정답 판정이나 학습 효과의 증명은 아닙니다. 확장은 테스트 실행, 소스 적용, 저장, 거절한 코드의 되돌리기를 대신하지 않습니다.
 
-데모는 음수를 만나면 합산을 끝내는 코드로 시작합니다. `[10, -5, 20]`의 결과를 예상하고, 음수만 건너뛰도록 바꾼 뒤 `[-5, 10, 20]`도 살펴보세요. 화면의 큰 버튼 하나가 현재 할 일을 안내합니다. **직접 바꾸기**로 코드에 돌아가고, **제안 보기**로 도움을 펼치고, **변경 비교**로 수정 전후를 확인합니다. 확장이 예제를 자동 실행하지는 않습니다.
+## 1분 안에 시작하기
 
-다른 방법으로 풀었다면 비교한 뒤 **×**로 안내를 끝내도 수정 내용은 유지됩니다. 다음 단계 진행은 여전히 정확한 글자 일치로 판단하며, 다른 풀이가 옳은지 자동 채점하지 않습니다.
+로컬 VS Code 1.100 이상이 필요합니다. 현재는 한국어 UI의 미리보기입니다.
 
-코드는 평소 쓰던 편집기에 입력합니다. 복사·붙여넣기나 자동완성을 막지 않으며, 글자마다 효과를 터뜨리거나 감상문을 요구하지 않습니다. 비교는 잠깐 멈췄을 때 갱신합니다. 제안과 일치해도 실제 동작은 테스트와 변경 내역으로 확인해야 합니다.
+1. [GitHub Releases](https://github.com/CodeNyangi/type-the-change/releases)에서 VSIX를 받아 **Extensions: Install from VSIX…**로 설치합니다.
+2. **Type the Change: Try the Demo**를 실행합니다. `[10, -5, 20]`의 합계를 먼저 예상합니다.
+3. 직접 고치고 **비교하고 판단**을 누른 뒤, 확인한 근거를 기록합니다.
 
-로컬 JSON 수정안을 쓰려면 대상 프로젝트를 연 뒤 **Type the Change: Open a Plan**을 실행하세요. [수정안 형식](plan.schema.json)과 [예제](examples/plan.json)가 있습니다. 데모와 JSON 가져오기는 로그인이나 AI 요청 없이 동작합니다.
+**제안 보기**로 도움을 펼칩니다. **직접 바꾸기** 또는 **⌘⌥T / Ctrl+Alt+T**로 코드에 돌아갑니다. **⌘⌥Enter / Ctrl+Alt+Enter**는 비교만 열며 변경을 승인하지 않습니다. **×**로 끝내도 편집한 코드는 유지됩니다.
 
-**배포 상태:** GitHub Releases의 설치 파일은 `main`의 최신 변경보다 이전 버전일 수 있습니다. [변경 기록](CHANGELOG.md)과 [검증 범위](docs/verification.md)를 확인하세요. 실제 계정으로 ChatGPT에 동의하고 구독 사용량으로 수정안을 생성하는 과정은 아직 검증 전입니다.
+영상의 틀린 제안을 직접 판단하려면 [`examples/judgment`](examples/judgment/README.md) 폴더를 열고 **Type the Change: Open a Plan**으로 `plan.json`을 가져오세요. 저장한 다음 터미널에서 `node check.mjs`를 실행합니다. 다른 입력도 확인해 보세요. 데모와 JSON 가져오기는 로그인 없이 동작합니다.
+
+**배포 상태:** 0.3.0 판단 흐름은 검토용 빌드입니다. 이전에 배포된 버전은 글자 일치로 진행할 수 있으니 [버전과 변경 기록](CHANGELOG.md)을 확인하세요. 개인 게시자 CodeNyangi를 등록했고 첫 Marketplace 배포를 준비하고 있습니다. 실제 계정으로 ChatGPT에 동의하고 구독으로 제안을 생성하는 과정은 아직 검증 전입니다.
 
 ## ChatGPT로 코드 수정안 만들기
 
 **Type the Change: Start** → 화면에서 원하는 변경 입력·파일 선택 → **수정안 만들기**. 요청은 **⌘Enter / Ctrl+Enter**로 보낼 수도 있습니다.
 
-예를 들어 “음수 가격은 합계에서 제외하고, 확인해야 할 조건을 설명해 줘”라고 요청할 수 있습니다. 관련 파일은 최대 8개까지 선택합니다. 처음 한 번 **Continue with ChatGPT**로 연결하며, 모델은 이전 선택을 기억합니다. 모델 버튼으로 바꿀 수도 있습니다. **변경 비교**로 언제든 수정 전후를 살펴봅니다. 파일 저장은 사용자가 합니다.
+예를 들어 “음수 가격은 합계에서 제외하고, 확인해야 할 조건을 설명해 줘”라고 요청할 수 있습니다. 관련 파일은 최대 8개까지 선택합니다. 처음 한 번 **Continue with ChatGPT**로 연결하며, 모델은 이전 선택을 기억합니다. 모델 버튼으로 바꿀 수도 있습니다. 예상을 적은 뒤 **비교하고 판단**으로 수정 전후를 살펴봅니다. 파일 저장은 사용자가 합니다.
 
 API 키 대신 OpenAI의 공식 [오픈소스 앱용 ChatGPT 로그인](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)을 사용합니다. 명시적으로 선택한 파일 내용과 요청을 OpenAI로 보내며, 계정에서 허용된 ChatGPT 구독 사용량과 한도를 따릅니다. 모든 구독의 이용 가능 여부나 무제한 사용을 보장하지는 않습니다. 로그인 정보는 VS Code SecretStorage에 보관하며, 다른 앱의 인증 정보를 읽지 않습니다. 자세한 내용은 [개인정보 처리 안내](PRIVACY.md)를 참고하세요.
 
@@ -54,16 +56,16 @@ MCP 클라이언트에는 이렇게 요청할 수 있습니다.
 
 서버는 파일 읽기, 수정안 전달, 마지막 진행 상태 조회만 제공합니다. 모델을 직접 호출하거나 소스 파일을 수정하지 않습니다. 모델 사용량은 연결한 클라이언트의 로그인·구독을 따릅니다.
 
-도착한 알림을 열거나 **Type the Change: Open MCP Plan**을 실행하세요. 대상 프로젝트의 `.gitignore`에는 `.type-the-change/`를 추가해 주세요. 이 폴더에 코드가 포함된 수정안과 마지막 진행 상태가 저장됩니다.
+도착한 알림을 열거나 **Type the Change: Open MCP Plan**을 실행하세요. 대상 프로젝트의 `.gitignore`에는 `.type-the-change/`를 추가해 주세요. 이 폴더에 코드가 포함된 수정안, 마지막 진행 상태, 현재 세션의 예상과 판단 근거가 저장됩니다. MCP 상태 조회에는 자유롭게 적은 예상·근거가 포함되지 않습니다.
 
 ## 현재 지원 범위
 
 - 로컬 VS Code 1.100 이상, 기존 UTF-8 파일, 파일당 64 KiB 이하.
 - 변경 전 코드가 정확히 한 곳에 있는 수정안만 엽니다. 공백까지 비교합니다.
-- 실제 파일 적용과 저장은 사용자가 합니다. 범위 밖 수정이나 앞 단계 변경이 생기면 진행을 멈춥니다.
+- 실제 파일 적용과 저장은 사용자가 합니다. 범위 밖 수정이나 앞 단계 변경이 생기면 유지 결정을 막고 다시 확인합니다.
 - 창을 닫으면 안내 세션은 종료됩니다. 편집한 코드는 기존 VS Code 저장·복원 설정을 따릅니다.
 - 새 파일 생성, 이름 변경, 원격 작업 폴더는 아직 지원하지 않습니다.
-- ‘일치’는 ‘올바른 코드’나 ‘학습 효과 검증’을 뜻하지 않습니다.
+- ‘일치’는 글자 비교입니다. ‘판단 기록됨’도 자동 테스트 통과나 학습 효과 검증을 뜻하지 않습니다.
 
 ## 오픈소스 기여
 
@@ -90,10 +92,10 @@ npm run package
 
 `test:host`는 별도의 VS Code 프로필과 임시 작업 폴더에서 실행됩니다. Linux에서는 `xvfb-run -a npm run test:host`처럼 디스플레이가 필요합니다. `artifacts/`에 생성된 VSIX를 **Extensions: Install from VSIX…**로 설치하면 개발 중인 버전을 사용할 수 있습니다.
 
-화면을 띄우지 않는 검사는 `npx playwright install chromium --only-shell` 후 `npm run test:ui:webview`로 실행합니다. 실제 VS Code 버튼·입력 동선은 Linux CI의 가상 화면에서 `test:ui:vscode`로 검사하며, 이 스크립트는 로컬 데스크톱 실행을 거부합니다. 최소 지원 버전과 Windows 코드 검사도 CI에 포함됩니다. 결과와 남은 한계는 [백그라운드 검증 보고서](docs/background-verification-2026-11-01.md)에 기록했습니다.
+화면을 띄우지 않는 검사는 `npx playwright install chromium --only-shell` 후 `npm run test:ui:webview`로 실행합니다. 실제 VS Code 버튼·입력 동선은 Linux CI의 가상 화면에서 `test:ui:vscode`로 검사하며, 이 스크립트는 로컬 데스크톱 실행을 거부합니다. 최소 지원 버전과 Windows 코드 검사도 CI에 포함됩니다. 결과와 남은 한계는 [판단 흐름 검증 보고서](docs/judgment-workflow-0.3.0.md)에 기록했습니다.
 
 `npm run preview`는 실제 확장 화면과 같은 HTML을 모의 호스트에서 보여 줍니다. 브라우저 미리보기는 네이티브 편집기 입력이나 실계정 인증을 검증한 결과와 구분합니다. 자세한 테스트 방법과 한계는 [영문 README](README.md#build-and-test-from-source)와 [검증 문서](docs/verification.md)에 있습니다.
 
-사이의 ‘직접 따라 쓰며 이해하기’와 운세냥이 MCP의 제한된 도구 연결 방식에서 출발한 프로젝트입니다. [MIT 라이선스](LICENSE)로 공개합니다.
+사이의 ‘직접 살피며 이해하기’와 운세냥이 MCP의 제한된 도구 연결 방식에서 출발한 프로젝트입니다. [MIT 라이선스](LICENSE)로 공개합니다.
 
 [개인정보 처리 안내](PRIVACY.md) · [보안](SECURITY.md) · [포함된 의존성 고지](THIRD_PARTY_NOTICES)

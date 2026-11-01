@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased — audit fixes
+## 0.3.0 — judgment workflow (review build)
+
+- Predict an outcome before revealing a proposal. Compare the actual buffer, record evidence, and explicitly keep, reject, or defer.
+- Accept alternative code within the guided range; matching text alone never completes a step. Invalidate evidence after code changes and request a new plan if a later anchor no longer fits.
+- Keep bounded, local decision notes; expose decision metadata through MCP without returning freeform notes. No automatic source edits, saves, or test execution.
+- Add a minimal prompt-and-cursor icon, a deliberately wrong practice proposal, and a captioned walkthrough recorded in real VS Code on a remote virtual display.
+- Expand local coverage to 164 tests and 162 headless layouts. Exact remote results are recorded in the [verification report](docs/judgment-workflow-0.3.0.md).
+
+### Included audit fixes
 
 - Show the change goal before the proposed answer. Keep proposals closed until requested, expose one primary action per state, and allow original/current comparison throughout the session. Ending guidance keeps edits.
 - Replace the demo with a `return` versus `continue` example, including transfer inputs; distinguish exact text agreement from correct behavior and learning.

@@ -1,34 +1,40 @@
 # Type the Change
 
-**AI points to the change. You type it into your own code.**
+<img src="assets/icon.png" alt="An open code prompt and input cursor" width="96" />
+
+**AI suggests. You predict, check, and decide.**
 
 [한국어](README.ko.md) · [Download VSIX](https://github.com/CodeNyangi/type-the-change/releases) · [Report an issue](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [Contribution policy](CONTRIBUTING.md)
 
-**Type the Change is an open-source VS Code extension for AI-assisted coding and deliberate coding practice.** Read a proposed code change, type it in your own editor, and review the diff. Use an imported JSON plan, an optional ChatGPT connection, or a Model Context Protocol (MCP) client.
+A small, open-source VS Code extension for practicing judgment while coding with AI. Keep your own editor, inspect a proposed change, and decide whether the actual code deserves to stay. Exact text matching never approves a change.
 
-It is for developers who want to stay involved in the details of an AI-proposed change: a condition, a return value, a small refactor. The extension selects the relevant code in the native editor and shows the goal beside it. Open **제안 보기** when you want the proposed code and reasoning. The direct ChatGPT integration runs inside VS Code and does not require Codex Desktop, Codex CLI, or a separate MCP client.
+[![Watch the real VS Code walkthrough](assets/quickstart.gif)](assets/type-the-change-quickstart.mp4)
 
-1. Describe a change and select the relevant files, or receive a plan from an MCP client.
-2. Inspect the selected code and try the change; the proposal stays closed until requested.
-3. Compare at any time. When the text matches, continue with **⌘⌥Enter** / **Ctrl+Alt+Enter**.
+**[Watch the walkthrough →](assets/type-the-change-quickstart.mp4)** · [Try the same example](examples/judgment/README.md)
 
-You control editing and saving. Normal Undo, completion, paste, and accessibility tools remain available. A match means the text agrees with the proposal; use your tests and Git diff to judge the result. Deliberate practice is the design intent, not a claim of measured learning gains.
+The captioned video uses real VS Code, a deliberately wrong local proposal, and a real test run. It shows why `break` still loses a price, then keeps the author's `continue` alternative. No live AI account is needed.
 
-## Quickstart: install the VS Code extension
+1. **Predict.** Write one short expected result before revealing the suggestion.
+2. **Check.** Edit normally, run your own checks, then compare the actual buffer.
+3. **Decide.** Record the evidence and keep your change, reject the proposal, or defer.
 
-Requires local desktop VS Code 1.100 or later. This is an early preview; the interface currently uses Korean.
+The guide stays beside your code in the same VS Code window. You can keep a different implementation within the guided range. If code changes after comparison, previous evidence no longer approves it. If your alternative invalidates a later planned step, the guide asks for a new plan.
 
-1. Download the `.vsix` attached to a [GitHub release](https://github.com/CodeNyangi/type-the-change/releases).
-2. In VS Code, run **Extensions: Install from VSIX…** from the command palette.
-3. Run **Type the Change: Try the Demo**. No sign-in is needed for the demo or imported plans.
+These are your judgments, not an automatic correctness grade. The extension does not run checks, apply changes, undo a rejected edit, or save your files. Learning and better judgment are design goals; learning gains have not been measured.
 
-The demo creates a temporary `price.ts`: it stops at a negative price instead of skipping it. Predict the total for `[10, -5, 20]`, change the selected line, then check `[-5, 10, 20]`. **직접 바꾸기** returns to the code; **제안 보기** reveals help. **변경 비교** opens the original/current diff at any time. One primary action follows the current state; no quiz or explanation form blocks editing. **⌘⌥T** / **Ctrl+Alt+T** also returns to the current change. Normal editor Undo, selection, and accessibility tools remain available. The extension does not execute the example or save files automatically.
+## Start in a minute
 
-An alternative implementation can be compared and kept by ending guidance with **×**. Continuation still requires an exact text match; it does not judge whether a different solution is correct.
+Requires local desktop VS Code 1.100+. This is a preview, currently with a Korean interface.
 
-To use a local JSON plan, open its target project and run **Type the Change: Open a Plan**. See the [plan schema](plan.schema.json) and [example](examples/plan.json).
+1. Download a `.vsix` from [GitHub Releases](https://github.com/CodeNyangi/type-the-change/releases), then run **Extensions: Install from VSIX…**.
+2. Run **Type the Change: Try the Demo**. Predict the total of `[10, -5, 20]`.
+3. Type your change, choose **비교하고 판단**, and record what you checked.
 
-**Preview status:** published VSIX files may lag behind `main`. Check the [changelog](CHANGELOG.md) and [verification notes](docs/verification.md) for the build you are using. Real-account ChatGPT consent and subscription-backed plan generation remain unverified; the demo and JSON import do not depend on that connection.
+**제안 보기** reveals help. **직접 바꾸기** or **⌘⌥T / Ctrl+Alt+T** returns to the source. **⌘⌥Enter / Ctrl+Alt+Enter** opens comparison; it never accepts a change. **이 변경 유지**, **제안 거절**, and **보류** record distinct decisions. **×** ends the guide and preserves edits.
+
+For the video's deliberately wrong proposal, open [`examples/judgment`](examples/judgment/README.md) as a folder, import its `plan.json` with **Type the Change: Open a Plan**, and run `node check.mjs` yourself after saving. Test other inputs too. Demo and imported plans work offline without a sign-in.
+
+**Release status:** the 0.3.0 judgment workflow is a review build. Published older versions may still use text-matching progression. Check the version and [changelog](CHANGELOG.md). The owner’s personal publisher, CodeNyangi, is registered; first Marketplace publication is being prepared. Real-account ChatGPT consent and subscription-backed generation remain unverified; local examples and JSON import do not depend on them.
 
 ## AI-assisted coding with ChatGPT
 
@@ -65,7 +71,7 @@ Ask your client: “Read the relevant file, propose a small typing plan for this
 
 The MCP server makes no model requests and cannot modify source or run shell commands. Its client supplies the intelligence and uses that client's own authentication and billing. ChatGPT subscription access in this extension does not automatically connect arbitrary MCP clients.
 
-Plans and dated progress are stored under `.type-the-change/`. Add that directory to the target project's `.gitignore`. Status is a last-known editor snapshot, not a fresh disk check or test result. Disconnect the server when you no longer want a client to read the configured workspace.
+Plans, dated progress, and the last session’s human decision notes are stored under `.type-the-change/`. Add that directory to the target project's `.gitignore`. Status is a last-known editor snapshot, not a fresh disk check or test result. `matched` describes text agreement. In 0.3.0, `complete` requires a recorded human keep decision; `rejected` and `deferred` are separate outcomes. The MCP status tool does not return your freeform prediction or evidence. Disconnect the server when you no longer want a client to read the configured workspace.
 
 ## Plan format
 
@@ -119,7 +125,7 @@ npm run package
 
 `test:host` runs the extension in an isolated VS Code profile and temporary workspace. On macOS it can use the installed VS Code; otherwise it downloads a pinned VS Code test build. Linux requires a display, for example `xvfb-run -a npm run test:host`. The VSIX is written to `artifacts/`.
 
-For checks without opening a desktop window, install the isolated browser with `npx playwright install chromium --only-shell`, then run `npm run test:ui:webview`. Real workbench clicks run separately as `test:ui:vscode` on Linux CI with a virtual display; that script refuses local desktop launch. CI also checks the minimum VS Code version and Windows core behavior. See the [background verification report](docs/background-verification-2026-11-01.md) for results and limits.
+For checks without opening a desktop window, install the isolated browser with `npx playwright install chromium --only-shell`, then run `npm run test:ui:webview`. Real workbench clicks run separately as `test:ui:vscode` on Linux CI with a virtual display; that script refuses local desktop launch. CI also checks the minimum VS Code version and Windows core behavior. See the [judgment workflow verification](docs/judgment-workflow-0.3.0.md) for results and limits.
 
 Install that local VSIX with **Extensions: Install from VSIX…** to try the development build. If you investigate authentication or editor behavior, include relevant verification and its limits in your issue report.
 
