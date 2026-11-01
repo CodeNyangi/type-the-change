@@ -1,45 +1,41 @@
 # Contributing
 
-Anyone can report a bug, suggest an improvement, share a confusing moment, or open a pull request. Korean and English are welcome. Small fixes and documentation improvements do not need an issue first; discuss larger changes before investing time in them.
+Community participation happens through [issues](https://github.com/CodeNyangi/type-the-change/issues). Bug reports, root-cause analysis, feature proposals, and usability feedback help the repository owner understand problems and decide what to improve. Korean and English are welcome.
 
-버그 제보, 사용 경험, 개선 제안, PR 모두 환영합니다. 한국어로 편하게 작성해 주세요. 모든 변경의 최종 검토와 병합 결정은 저장소 소유자가 직접 합니다.
+**We do not accept external code contributions or pull requests.** Please share proposed corrections and technical findings in an issue, including documentation corrections. [@CodeNyangi](https://github.com/CodeNyangi) handles implementation and remains responsible for the final human review and manual merge of project changes.
 
-Use the [issue chooser](https://github.com/CodeNyangi/type-the-change/issues/new/choose) for bugs, ideas, or usability feedback. Keep examples small and remove private source and credentials. For sensitive findings, follow [Security](SECURITY.md) instead of posting details publicly.
+**외부 코드 기여와 Pull Request는 받지 않습니다.** 버그 제보, 원인 분석, 기능 제안, 사용 경험은 이슈로 알려 주세요. 한국어로 편하게 작성하셔도 됩니다. 코드와 문서 변경은 저장소 소유자 `@CodeNyangi`가 진행하고 직접 검토합니다.
 
-## Make a change
+## Why issues are the contribution path
 
-1. Fork the repository and create a branch from the current upstream `main`, such as `fix/reopen-guide` or `docs/setup`.
-2. Make one focused change. Use small commits with clear messages describing the behavior or reason; no special commit-message format is required.
-3. Run the checks relevant to the change, and inspect your own diff.
-4. Open a **draft PR** against upstream `main`. Explain the problem, resulting behavior, and how you checked it. Link an issue if there is one.
-5. Mark the PR ready when it can be reviewed. Respond to feedback in the same PR; tell the reviewer if you rewrite its history.
-6. Wait for the repository owner's human review. The owner decides whether to merge and performs the merge manually. Passing CI or an automated review does not approve a PR.
+Changes can affect editor state, file access, account connections, and the experience of reading and typing code. The owner considers these together when choosing and implementing a solution. An issue can establish the problem, explain its cause, and compare approaches without asking contributors to prepare a patch for acceptance.
 
-Keep `main` changes behind pull requests. Do not enable auto-merge or use a bot to approve or merge changes. [Maintainer policy](docs/maintainer-policy.md) explains the review rules and their relationship to GitHub settings.
+This contribution policy does not change the project's [MIT license](LICENSE).
 
-## Development and verification
+## Report a problem
 
-Use Node.js 22 or newer:
+Search [existing issues](https://github.com/CodeNyangi/type-the-change/issues) first. Add new evidence to an existing report when it describes the same problem; otherwise use the [issue chooser](https://github.com/CodeNyangi/type-the-change/issues/new/choose).
 
-```sh
-npm ci
-npm run check
-npm test
-npm run build
-```
+Useful details include:
 
-For editor behavior, also run `npm run test:host`. It opens an isolated VS Code window and temporary workspace, so run it when you can spare the display. Set `TTC_REQUIRE_NATIVE_TYPING=1` to require native typing coverage on macOS. Linux CI uses `xvfb-run -a npm run test:host`. A skipped native-input test is not a typing pass.
+- The steps, command, or button that led to the problem, with a small reproducible example when possible.
+- What you expected and what happened instead.
+- Type the Change and VS Code versions, operating system, and relevant editor settings.
+- Error messages or logs with credentials, private source, and personal details removed.
+- Any root cause you found, technical observations, or an explanation of a possible approach.
 
-`npm run preview` provides the production panel with a simulated host for UI checks. It does not verify real editor behavior or account access. `npm run package` builds an installable VSIX in `artifacts/`.
+Share what you know; a report does not need a complete diagnosis. Do not attach live tokens or real private workspace plans.
 
-For code changes, record the commands and results in the PR. Add focused regressions for changed behavior, especially paths, plan validation, authentication, cancellation, or editor state. Documentation-only changes need link and content checks; explain any relevant checks you could not run. UI changes benefit from a screenshot or short recording, with personal information removed.
+## Suggest an improvement
 
-## Keep the experience and boundaries intact
+Describe the task you want to accomplish, the behavior you would like, and how it would help your workflow. If an existing issue covers the same need, add your context or a reaction there. Usability feedback is also welcome: tell us where you got stuck or what helped you understand a change. You do not need to propose a design or implementation.
 
-Preserve the central interaction: a person reads, types, and reviews a proposed code change. Keep the interface small. Never silently apply source edits or treat matching text as proof of correctness.
+## Participate respectfully
 
-Do not commit tokens, real workspace plans, personal source, generated bundles, or VSIX files. Keep external requests behind explicit user actions and document changes to data handling in [PRIVACY.md](PRIVACY.md).
+Treat other participants with respect, allow for misunderstandings, and focus discussion on the problem. Sharing clear examples, investigation results, and limitations helps everyone following the issue. Reports and proposals inform priorities; they do not guarantee implementation or a response schedule.
 
-Changes to authentication must stay aligned with the linked official OpenAI documentation and must not read credentials belonging to another app. Never use live credentials in automated tests.
+## Security
 
-AI-assisted contributions are welcome. You remain responsible for understanding the change, reviewing its diff, and describing what was actually tested. Automation does not replace the owner's review.
+For a vulnerability, use the private reporting route in [SECURITY.md](SECURITY.md). Do not disclose sensitive security findings in a public issue.
+
+This issue-based contribution policy follows the approach documented in [OpenAI Codex's contribution policy at revision `67f0994`](https://github.com/openai/codex/blob/67f0994b532b8740f14b5b738af7b7b2a915b1d6/docs/contributing.md). Type the Change is maintained by `@CodeNyangi`; see the [maintainer policy](docs/maintainer-policy.md) for this repository's review and merge rules.

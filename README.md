@@ -2,7 +2,7 @@
 
 **AI points to the change. You type it into your own code.**
 
-[한국어](README.ko.md) · [Download VSIX](https://github.com/CodeNyangi/type-the-change/releases) · [Report an issue](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [Contribute](CONTRIBUTING.md)
+[한국어](README.ko.md) · [Download VSIX](https://github.com/CodeNyangi/type-the-change/releases) · [Report an issue](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [Contribution policy](CONTRIBUTING.md)
 
 **Type the Change is an open-source VS Code extension for AI-assisted coding and deliberate coding practice.** Read a proposed code change, type it in your own editor, and review the diff. Use an imported JSON plan, an optional ChatGPT connection, or a Model Context Protocol (MCP) client.
 
@@ -94,10 +94,10 @@ See [the schema](plan.schema.json) and [a complete example](examples/plan.json).
 
 ## Contributing
 
-English and Korean contributions are welcome. Useful contributions include a reproducible editor bug, clearer onboarding, accessibility improvements, small example plans, and tests for cancellation or file boundaries.
+Community participation is through issues. Bug reports, root-cause analysis, feature proposals, and usability feedback are welcome in English or Korean. **External code contributions and pull requests are not accepted.** The repository owner handles implementation and human review.
 
-- **Found a problem or have a proposal?** [Open an issue](https://github.com/CodeNyangi/type-the-change/issues/new/choose). Include the VS Code/extension version, platform, and a minimal example with expected and actual behavior.
-- **Ready to change code or docs?** Follow [CONTRIBUTING.md](CONTRIBUTING.md), then [open a pull request](https://github.com/CodeNyangi/type-the-change/compare). Keep changes focused on reading, typing, and reviewing code.
+- **Found a problem?** Search existing issues first, then [report it](https://github.com/CodeNyangi/type-the-change/issues/new/choose) with the VS Code/extension version, platform, reproduction steps, and expected versus actual behavior. Sanitized logs and technical analysis help.
+- **Have a proposal or correction?** Describe the use case and desired behavior in an issue, including documentation corrections. See [CONTRIBUTING.md](CONTRIBUTING.md) for the issue-based participation policy.
 - **Reporting a vulnerability?** Follow [SECURITY.md](SECURITY.md). Do not put tokens, private code, or real workspace plans in a public issue.
 
 ## Build and test from source
@@ -117,7 +117,7 @@ npm run package
 
 `test:host` runs the extension in an isolated VS Code profile and temporary workspace. On macOS it can use the installed VS Code; otherwise it downloads a pinned VS Code test build. Linux requires a display, for example `xvfb-run -a npm run test:host`. The VSIX is written to `artifacts/`.
 
-Install that local VSIX with **Extensions: Install from VSIX…** to try the development build. If you change authentication or editor behavior, include the relevant verification and its limits in your pull request.
+Install that local VSIX with **Extensions: Install from VSIX…** to try the development build. If you investigate authentication or editor behavior, include relevant verification and its limits in your issue report.
 
 Tests cover every webview command and state transition in a DOM environment, path boundaries, sequential plans, stdio MCP, OAuth state/PKCE/refresh/revocation, inference completion/cancellation, and real VS Code editor integration. Native typing tests use VS Code’s `type` command, including auto-pairs, indentation, CRLF, and deletion. A locked macOS host explicitly skips those keyboard cases; `TTC_REQUIRE_NATIVE_TYPING=1` and non-macOS runners require them. DOM tests do not verify browser pixels or real account consent.
 

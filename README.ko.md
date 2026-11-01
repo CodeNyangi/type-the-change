@@ -2,7 +2,7 @@
 
 **AI가 수정할 곳을 짚고, 나는 직접 코드를 쓴다.**
 
-[English](README.md) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases) · [문제 제보](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [기여 안내](CONTRIBUTING.md)
+[English](README.md) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases) · [문제 제보](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [참여 정책](CONTRIBUTING.md)
 
 **Type the Change는 AI가 제안한 코드 변경을 직접 읽고, 입력하고, 검토하는 오픈소스 VS Code 확장입니다.** JSON 수정안, 선택적인 ChatGPT 연결, MCP(Model Context Protocol) 클라이언트로 변경 제안을 받아 사용할 수 있습니다.
 
@@ -63,10 +63,10 @@ MCP 클라이언트에는 이렇게 요청할 수 있습니다.
 
 ## 오픈소스 기여
 
-한국어와 영어 모두 환영합니다. 재현 가능한 편집기 오류, 더 명확한 안내, 접근성 개선, 작은 수정안 예제, 파일 경계·취소 동작의 테스트로 기여할 수 있습니다.
+커뮤니티 참여는 이슈로 받습니다. 버그 제보, 원인 분석, 기능 제안, 사용 경험을 한국어나 영어로 알려 주세요. **외부 코드 기여와 Pull Request는 받지 않습니다.** 코드와 문서 변경은 저장소 소유자가 진행하고 직접 검토합니다.
 
-- **문제나 개선 제안:** [이슈 작성](https://github.com/CodeNyangi/type-the-change/issues/new/choose)에서 VS Code·확장 버전, 운영체제, 재현 과정, 기대한 동작과 실제 동작을 알려주세요.
-- **코드·문서 수정:** [CONTRIBUTING.md](CONTRIBUTING.md)를 읽고 [Pull Request](https://github.com/CodeNyangi/type-the-change/compare)를 보내주세요. 직접 읽고 입력하고 검토하는 흐름에 집중한 작은 변경을 권장합니다.
+- **문제 제보:** 기존 이슈를 먼저 검색한 뒤, [이슈 작성](https://github.com/CodeNyangi/type-the-change/issues/new/choose)에서 VS Code·확장 버전, 운영체제, 재현 과정, 기대한 동작과 실제 동작을 알려 주세요. 민감한 내용을 제거한 로그와 원인 분석도 도움이 됩니다.
+- **개선 제안이나 문서 정정:** 사용 상황과 원하는 동작을 이슈에 설명해 주세요. 이슈로 참여하는 방법은 [CONTRIBUTING.md](CONTRIBUTING.md)에 있습니다.
 - **보안 문제:** [SECURITY.md](SECURITY.md)의 신고 방법을 따라 주세요. 토큰, 비공개 코드, 실제 작업 폴더의 수정안을 공개 이슈에 첨부하지 마세요.
 
 ## 소스에서 빌드하고 테스트하기

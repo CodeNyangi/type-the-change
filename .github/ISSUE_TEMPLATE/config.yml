@@ -1,3 +1,5 @@
+# openai/codex has no chooser config at the reference commit, so its default
+# blank-issue path remains available. Keep that behavior explicitly here.
 blank_issues_enabled: true
 contact_links:
   - name: Private security report / 비공개 보안 제보
