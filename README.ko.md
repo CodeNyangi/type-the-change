@@ -101,7 +101,7 @@ npm run package
 
 `test:host`는 별도의 VS Code 프로필과 임시 작업 폴더에서 실행됩니다. Linux에서는 `xvfb-run -a npm run test:host`처럼 디스플레이가 필요합니다. `artifacts/`에 생성된 VSIX를 **Extensions: Install from VSIX…**로 설치하면 개발 중인 버전을 사용할 수 있습니다.
 
-화면을 띄우지 않는 검사는 `npx playwright install chromium --only-shell` 후 `npm run test:ui:webview`로 실행합니다. 실제 VS Code 버튼·입력 동선은 Linux CI의 가상 화면에서 `test:ui:vscode`로 검사하며, 이 스크립트는 로컬 데스크톱 실행을 거부합니다. 최소 지원 버전과 Windows 코드 검사도 CI에 포함됩니다. 결과와 남은 한계는 [판단 흐름 검증 보고서](docs/judgment-workflow-0.3.0.md)에 기록했습니다.
+화면을 띄우지 않는 검사는 `npx playwright install chromium --only-shell` 후 `npm run test:ui:webview`로 실행합니다. 실제 VS Code 버튼·입력 동선은 Linux CI의 가상 화면에서 `test:ui:vscode`로 검사하며, 이 스크립트는 로컬 데스크톱 실행을 거부합니다. 최소 지원 버전과 Windows 코드 검사도 CI에 포함됩니다. 결과와 남은 한계는 [키보드 흐름 검증 보고서](docs/keyboard-workflow-0.4.0.md)에 기록했습니다.
 
 `npm run preview`는 실제 확장 화면과 같은 HTML을 모의 호스트에서 보여 줍니다. 브라우저 미리보기는 네이티브 편집기 입력이나 실계정 인증을 검증한 결과와 구분합니다. 자세한 테스트 방법과 한계는 [영문 README](README.md#build-and-test-from-source)와 [검증 문서](docs/verification.md)에 있습니다.
 

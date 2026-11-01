@@ -1,13 +1,13 @@
 {
   "success": true,
-  "durationSeconds": 38.418,
+  "durationSeconds": 25.776,
   "environment": "Real VS Code 1.142.0, isolated Linux CI display",
   "fixture": "examples/judgment",
-  "sourceCommit": "5c47f578aaae52d836a5fb08c74d7b123a3a82eb",
+  "sourceCommit": "2700f8cfdda27e77d385589195138cb7fdb42d6d",
   "limitations": [
     "Deliberately wrong local exercise, not a live AI response.",
     "One example input, not proof of general correctness or learning gain.",
-    "File dialog is substituted; all editing, comparison, terminal execution and decisions use real VS Code.",
+    "File dialog is substituted; all editing, task execution, comparison and decisions use real VS Code keyboard controls.",
     "Silent video with burned-in Korean captions."
   ]
 }

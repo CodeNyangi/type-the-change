@@ -134,7 +134,7 @@ npm run package
 
 `test:host` runs the extension in an isolated VS Code profile and temporary workspace. On macOS it can use the installed VS Code; otherwise it downloads a pinned VS Code test build. Linux requires a display, for example `xvfb-run -a npm run test:host`. The VSIX is written to `artifacts/`.
 
-For checks without opening a desktop window, install the isolated browser with `npx playwright install chromium --only-shell`, then run `npm run test:ui:webview`. Real workbench clicks run separately as `test:ui:vscode` on Linux CI with a virtual display; that script refuses local desktop launch. CI also checks the minimum VS Code version and Windows core behavior. See the [judgment workflow verification](docs/judgment-workflow-0.3.0.md) for results and limits.
+For checks without opening a desktop window, install the isolated browser with `npx playwright install chromium --only-shell`, then run `npm run test:ui:webview`. Real workbench clicks run separately as `test:ui:vscode` on Linux CI with a virtual display; that script refuses local desktop launch. CI also checks the minimum VS Code version and Windows core behavior. See the [keyboard workflow verification](docs/keyboard-workflow-0.4.0.md) for results and limits.
 
 Install that local VSIX with **Extensions: Install from VSIX…** to try the development build. If you investigate authentication or editor behavior, include relevant verification and its limits in your issue report.
 
