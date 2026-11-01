@@ -18,7 +18,7 @@ const subtitle=text=>captions.push({start:(Date.now()-started)/1000,text});
 async function command(title){
   await page.keyboard.press('F1');const input=page.locator('.quick-input-widget input[type="text"]');
   await input.waitFor({state:'visible'});await input.fill('>'+title);
-  const row=page.locator('.quick-input-list .monaco-list-row').filter({hasText:title}).first();await row.waitFor({state:'visible'});await row.click();
+  const row=page.locator('.quick-input-list .monaco-list-row').filter({hasText:title.includes(': ')?title.split(': ').slice(1).join(': '):title}).first();await row.waitFor({state:'visible'});await row.click();
 }
 async function panel(){
   const end=Date.now()+30000;
@@ -47,8 +47,8 @@ try{
   app=await electron.launch({executablePath,env,timeout:60000,args:[folder,`--user-data-dir=${profile}`,`--extensions-dir=${path.join(root,'extensions')}`,`--extensionDevelopmentPath=${process.cwd()}`,'--disable-workspace-trust','--skip-welcome','--skip-release-notes','--disable-updates','--no-sandbox']});
   page=await app.firstWindow();page.setDefaultTimeout(20000);
   await page.locator('.statusbar-item').filter({hasText:'Type the Change'}).waitFor({state:'visible',timeout:60000});
-  if(await page.locator('.part.sidebar').isVisible())await command('View: Hide Primary Side Bar');
-  if(await page.locator('.part.auxiliarybar').isVisible())await command('View: Hide Secondary Side Bar');
+  if(await page.locator('.part.sidebar').isVisible())await page.keyboard.press('Control+b');
+  if(await page.locator('.part.auxiliarybar').isVisible())await page.keyboard.press('Control+Alt+b');
   await command('Type the Change: Start');const view=await panel();await view.locator('#home').waitFor({state:'visible'});
   // Substitute only the platform file dialog. The extension parses and opens the real fixture.
   await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},path.join(folder,'plan.json'));
