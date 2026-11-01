@@ -42,7 +42,7 @@ summary{cursor:pointer;font-size:12px;color:var(--vscode-descriptionForeground,#
 <div class="row"><button id="file" class="quiet" data-command="focus" title="수정 위치로 이동"></button><span id="step"></span></div>
 <progress id="progress" max="1" value="0" aria-label="입력을 확인한 단계"></progress>
 <h1 id="title"></h1>
-<div class="row" id="actions"><button id="edit" data-command="focus">직접 바꾸기 <span aria-hidden="true">↗</span></button><button id="next" data-command="next" disabled hidden><span id="next-label">다음</span><kbd>${nextKey}</kbd></button><button id="review" data-command="review" class="quiet">변경 비교</button></div>
+<div class="row" id="actions"><button id="edit" data-command="focus"><span aria-hidden="true">←</span> 직접 바꾸기</button><button id="next" data-command="next" disabled hidden><span id="next-label">다음</span><kbd>${nextKey}</kbd></button><button id="review" data-command="review" class="quiet">변경 비교</button></div>
 <p id="status" role="status" aria-live="polite"></p>
 <details id="proposal"><summary>제안 보기</summary><p id="reason"></p><pre id="after" aria-label="제안 코드"></pre><p id="delete-hint" hidden>선택한 코드를 지우세요.</p><details id="original"><summary>변경 전</summary><pre id="before" aria-label="변경 전 코드"></pre></details></details>
 <button id="again" data-command="stop" class="quiet" hidden>다른 변경</button>

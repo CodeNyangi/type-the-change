@@ -4,32 +4,38 @@ The user's Mac desktop, current workspace, installed VS Code windows, and existi
 
 ## Results and evidence
 
-The expanded audit fixes passed [this complete CI run](https://github.com/CodeNyangi/type-the-change/actions/runs/41311608443) at commit `8765bb2`. Report-only revisions are covered by [the latest PR checks](https://github.com/CodeNyangi/type-the-change/pull/1/checks). This is an executable coverage report, not a claim that every possible editor setting, account, OS input method, or human learning outcome has been tested.
+The simplified guidance and learning demo passed [this complete CI run](https://github.com/CodeNyangi/type-the-change/actions/runs/41316683545) at commit `eb7775f`. The earlier expanded audit passed [its full run](https://github.com/CodeNyangi/type-the-change/actions/runs/41311608443) at `8765bb2`. Report-only revisions are covered by [the latest PR checks](https://github.com/CodeNyangi/type-the-change/pull/1/checks). This is an executable coverage report, not a claim that every possible editor setting, account, OS input method, or human learning outcome has been tested.
 
 | Area | Verified result | Boundary |
 | --- | --- | --- |
-| macOS background unit/integration tests | 151 passed, no skips | No native Mac window launched; VS Code/provider boundaries use mocks where stated in tests |
-| Linux application tests | 151 passed, no skips | Includes real filesystem, subprocess, loopback OAuth callback, and stdio MCP cases |
-| Windows application tests | 149 passed; 2 POSIX named-pipe cases skipped | Includes 20 rounds of competing account-lock recovery; the two POSIX cases run on macOS/Linux |
+| macOS background unit/integration tests | 155 passed, no skips | No native Mac window launched; VS Code/provider boundaries use mocks where stated in tests |
+| Linux application tests | 155 passed, no skips | Includes real filesystem, subprocess, loopback OAuth callback, and stdio MCP cases |
+| Windows application tests | 153 passed; 2 POSIX named-pipe cases skipped | Includes 20 rounds of competing account-lock recovery; the two POSIX cases run on macOS/Linux |
 | VS Code 1.142.0 native host | Passed, including native keyboard cases | Real Linux editor, virtual display; automatic pairs, indentation, CRLF, deletion, lifecycle and layout checks |
 | Minimum supported VS Code 1.100.0 | Passed, including native keyboard cases | Separate Linux host job validates the manifest's minimum version |
 | Real VS Code UI | 10 flow groups passed | Real Electron workbench and extension webview; JSON file-dialog result alone is substituted |
-| Headless production webview | 72 rendered cases; both shortcut conventions and keyboard scrolling passed | 300/460/720px × dark/light/high contrast × 8 states; simulated host and representative theme tokens |
+| Headless production webview | 108 rendered cases; both shortcut conventions and keyboard scrolling passed | 300/460/720px × dark/light/high contrast × 12 states; simulated host and representative theme tokens |
 | Required CI gate | 23 tests passed | Failed, skipped, cancelled, missing and malformed dependency results cannot pass |
 | Packaging | 14-file VSIX; packaged bundles and manifest match the current build | Test scripts, profiles, screenshots, node_modules and credentials are excluded |
 
-The UI workflow uploads `background-ui-evidence` to the linked run. It contains the actual VS Code screenshots/report and 72 headless screenshots with ARIA snapshots. Representative real-editor screenshots show the source and guide together, the completed flow, the native diff, and recovery after invalid JSON. Headless checks observed no JavaScript/CSP errors, outer horizontal overflow, unnamed visible buttons in Chromium's accessibility tree, or off-screen buttons in the tested matrix. This is not full screen-reader or WCAG certification.
+The UI workflow uploads `background-ui-evidence` to the linked run. It contains the actual VS Code screenshots/report and 108 headless screenshots with ARIA snapshots. Representative real-editor screenshots show the source and guide together, the completed flow, the native diff, the learning demo, and recovery after invalid JSON. Headless checks observed no JavaScript/CSP errors, outer horizontal overflow, unnamed visible buttons in Chromium's accessibility tree, or off-screen buttons in the tested matrix. This is not full screen-reader or WCAG certification.
+
+## Simpler guidance and a concrete learning example
+
+The initial guide shows the goal and one primary action, with the actual source in the adjacent native editor. Proposed code and its reason stay behind **제안 보기** until requested. The disclosure remains open while typing and closes on a new step or session; focus moves to a visible action if a focused control is hidden. The primary action follows the state: edit, continue, or compare. Comparison remains available during incomplete or different edits; ending guidance preserves source changes. These are interaction changes, not a new window or a new plan format.
+
+The shipped demo starts with `return result;` inside the negative-price branch. For `[10, -5, 20]`, the original returns 10; changing that line to `continue;` returns 30. A test executes the trusted shipped source before/after its shipped plan and checks a changed ordering, zero, empty input, all-negative input and repeated negative values. The real UI test also types a different `break;` edit, opens the real diff before a match, ends guidance without reverting it, and types `continue;` in a fresh sample. The extension itself does not run arbitrary code, assess alternative solutions, or measure learning. Exact matching still controls continuation.
 
 ## Real editor flows exercised
 
 1. Open the composer from the command palette; prevent empty submission and accept a Korean request draft.
 2. Select files from different folders, including Korean paths, through the actual multi-select Quick Pick; retain selection when cancelled.
-3. Import a JSON proposal and show guidance without applying source edits.
+3. Import a JSON proposal without applying source edits; keep its answer closed until requested and reset the disclosure on the next step.
 4. Type in the native editor, detect out-of-range edits, expose review, and recover when the buffer is restored.
 5. Use the native continuation shortcut, complete the second file, and verify that disk source remains unsaved.
 6. Open the actual VS Code original/current diff.
 7. Return to a new request while preserving the request draft.
-8. Start the sample and end guidance.
+8. Start the sample, compare an alternative before a match, preserve it after ending guidance, then complete a fresh sample by typing in the native editor.
 9. Open a real workspace MCP bridge plan without modifying source.
 10. Reject malformed imported JSON with a usable composer and a Korean recovery instruction.
 

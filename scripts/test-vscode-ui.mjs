@@ -191,6 +191,7 @@ try {
   await view.locator('#guide').waitFor({state: 'visible'});
   await view.locator('#file').waitFor({state: 'visible'});
   assert.equal(await view.locator('#after').isVisible(), false);
+  await page.screenshot({path: path.join(artifacts, 'learning-first-look.png')});
   await focusSource(view);
   await page.keyboard.type('      break;');
   await statusIs(view, 'editing');
