@@ -29,10 +29,10 @@ window.acquireVsCodeApi=()=>({getState:()=>({intent:sessionStorage.getItem('draf
 }});
 window.addEventListener('message',({data:m})=>{if(m?.type==='fixture'){
  if(m.name==='generated')guide(0);
- if(m.name==='outside')update({...panelState,status:'outside',message:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.',canContinue:false});
+ if(m.name==='outside')update({...panelState,status:'outside',message:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.',canContinue:false,complete:false});
  if(m.name==='error')update({...panelState,busy:false,error:'연결할 수 없어요. 다시 시도해 주세요.'});
- if(m.name==='delete')update({...panelState,...stages[0],after:'',step:1,total:1,complete:false,status:'untouched',canContinue:false});
- if(m.name==='long')update({...panelState,...stages[0],file:'src/한글 경로/deeply/nested/components/long-file-name.ts',title:'긴 제목에서도 코드를 읽고 수정할 수 있도록 화면을 확인합니다',after:'const result = items.filter(item => item.price >= 0).map(item => ({ ...item, total: item.price * item.quantity }));',complete:false});
+ if(m.name==='delete')update({...panelState,...stages[0],title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',step:1,total:1,complete:false,status:'untouched',message:'',canContinue:false,busy:false,error:'',notice:''});
+ if(m.name==='long')update({...panelState,...stages[0],file:'src/한글 경로/deeply/nested/components/long-file-name.ts',title:'긴 제목에서도 코드를 읽고 수정할 수 있도록 화면을 확인합니다',after:'const result = items.filter(item => item.price >= 0).map(item => ({ ...item, total: item.price * item.quantity }));',complete:false,status:'untouched',message:'',canContinue:false,busy:false,error:'',notice:''});
  if(m.name==='home')update({files:[],connected:false});
  if(m.name==='typing'&&panelState.file){const matched=m.value===panelState.after;update({...panelState,complete:false,status:matched?'matched':'editing',message:matched?'제안과 일치':'',canContinue:matched});}
 }});
@@ -45,7 +45,7 @@ createServer((req,res)=>{
  res.setHeader('Content-Type','text/html; charset=utf-8');res.setHeader('Cache-Control','no-store');
  if(req.url==='/panel'){
   let html=panelHtml(nonce,true);
-  const theme=`window.addEventListener('message',({data:m})=>{if(m?.type!=='theme')return;const theme=m.name;document.documentElement.style.cssText=theme==='light'?'--vscode-foreground:#333;--vscode-editor-background:#fff;--vscode-descriptionForeground:#666;--vscode-input-background:#fff;--vscode-input-foreground:#222;--vscode-button-secondaryBackground:#eee;--vscode-button-secondaryForeground:#333;--vscode-textCodeBlock-background:#f3f3f3;--vscode-input-border:#aaa;--vscode-testing-iconPassed:#38743a':theme==='contrast'?'--vscode-foreground:#fff;--vscode-editor-background:#000;--vscode-descriptionForeground:#fff;--vscode-input-border:#fff;--vscode-focusBorder:#ff0;--vscode-button-background:#000;--vscode-button-foreground:#fff;--vscode-widget-border:#fff;--vscode-textCodeBlock-background:#000;--vscode-input-background:#000':'';});`;
+  const theme=`window.addEventListener('message',({data:m})=>{if(m?.type!=='theme')return;const theme=m.name;document.documentElement.style.cssText=theme==='light'?'--vscode-foreground:#333;--vscode-editor-background:#fff;--vscode-descriptionForeground:#666;--vscode-input-background:#fff;--vscode-input-foreground:#222;--vscode-button-secondaryBackground:#eee;--vscode-button-secondaryForeground:#333;--vscode-textCodeBlock-background:#f3f3f3;--vscode-input-border:#aaa;--vscode-testing-iconPassed:#38743a;--vscode-editorWarning-foreground:#855f00;--vscode-errorForeground:#a1260d':theme==='contrast'?'--vscode-foreground:#fff;--vscode-editor-background:#000;--vscode-descriptionForeground:#fff;--vscode-input-border:#fff;--vscode-input-foreground:#fff;--vscode-input-placeholderForeground:#a6a6a6;--vscode-focusBorder:#f38518;--vscode-contrastBorder:#6fc3df;--vscode-button-border:#fff;--vscode-button-background:#000;--vscode-button-foreground:#fff;--vscode-button-hoverBackground:#0f4a85;--vscode-widget-border:#6fc3df;--vscode-textCodeBlock-background:#000;--vscode-input-background:#000;--vscode-editorWarning-foreground:#ffcc00;--vscode-errorForeground:#f48771':'';});`;
   html=html.replace('<script nonce=',`<script nonce="${nonce}">${bootstrap+theme}</script><script nonce=`);
   res.end(html);
  }else res.end(index);

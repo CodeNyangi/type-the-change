@@ -17,7 +17,7 @@ function view(mac=true,draft=''){
   function close(){assert.deepEqual(errors,[]);dom.window.close();}
   return {dom,window,document,get,update,click,type,messages,saved,close};
 }
-const step:PanelState={title:'값 변경',file:'price.ts',line:3,before:'old();',after:'new();',reason:'반환값을 확인합니다.',step:1,total:2,status:'untouched',message:'',canContinue:false};
+const step:PanelState={title:'값 변경',file:'price.ts',line:3,before:'old();',after:'new();',reason:'반환값을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false};
 
 test('start has one inline request, saved draft, and no model/login modal',()=>{
  const v=view(true,'이전 요청');assert.deepEqual(v.messages,[{command:'ready'}]);assert.equal(v.get<HTMLTextAreaElement>('intent').value,'이전 요청');
@@ -37,17 +37,39 @@ test('request shortcut submits trimmed intent once and busy state blocks duplica
  assert.equal(v.get<HTMLButtonElement>('files').disabled,true);v.click('stop');assert.equal(v.messages.at(-1).command,'stop');
  v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(v.messages.at(-1).command,'stop');v.close();
 });
+test('IME composition does not submit, advance, or cancel a request',()=>{
+ const v=view();v.type('한글 요청');const count=v.messages.length;
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,isComposing:true,cancelable:true}));
+ assert.equal(v.messages.length,count,'composition confirmation must not submit partial Korean text');
+ v.update({...step,canContinue:true});
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,isComposing:true,cancelable:true}));
+ assert.equal(v.messages.length,count,'composition confirmation must not accept a step');
+ v.update({busy:true});
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Escape',isComposing:true,cancelable:true}));
+ assert.equal(v.messages.length,count,'cancelling composition must not cancel the model request');v.close();
+});
 test('all home action buttons route to distinct allowlisted commands',()=>{
  const v=view();v.update({files:['a.ts','한글.ts'],model:'모델 A'});
  for(const command of ['chooseFiles','chooseModel','demo','import','loadPending','mcpConfig','signIn']){v.click(command);assert.equal(v.messages.at(-1).command,command);assert.ok(PANEL_COMMANDS.has(command));}
- assert.equal(v.get('files').textContent,'a.ts, 한글.ts');assert.equal(v.get('files').title,'a.ts\n한글.ts');
+ assert.equal(v.get('files').textContent,'파일 2개');assert.equal(v.get('files').title,'a.ts\n한글.ts');
+ v.update({files:['src/한글.ts']});assert.equal(v.get('files').textContent,'src/한글.ts');assert.equal(v.get('files').title,'src/한글.ts');
+ v.update({files:[]});assert.equal(v.get('files').textContent,'＋ 파일 선택');assert.equal(v.get('files').title,'전송할 파일 선택');
  v.update({connected:true});assert.equal(v.get('connect').hidden,true);
  for(const command of ['usage','signOut']){v.click(command);assert.equal(v.messages.at(-1).command,command);}
  v.close();
 });
+test('a newly connected account can choose its model before the first request',()=>{
+ const v=view();v.update({connected:true});
+ assert.equal(v.get('model').hidden,false);assert.equal(v.get('model').textContent,'모델 선택');
+ v.click('chooseModel');assert.equal(v.messages.at(-1).command,'chooseModel');
+ v.update({connected:true,model:'모델 A'});assert.equal(v.get('model').textContent,'모델 A');
+ v.update({connected:false});assert.equal(v.get('model').hidden,true);v.close();
+});
 test('typing, matching, continuation, completion and next request stay in one guide',()=>{
  const v=view();v.update(step);assert.equal(v.get('guide').hidden,false);assert.equal(v.get('home').hidden,true);assert.equal(v.get('after').textContent,'new();');
+ assert.equal(v.get('status').textContent,'선택된 코드를 직접 바꿔 보세요.');
  assert.equal(v.get<HTMLButtonElement>('next').disabled,true);const count=v.messages.length;v.click('next');assert.equal(v.messages.length,count);
+ v.update({...step,status:'editing',message:''});assert.equal(v.get('status').textContent,'','the initial instruction clears when typing begins');
  v.update({...step,status:'matched',message:'제안과 일치',canContinue:true});v.click('next');assert.equal(v.messages.at(-1).command,'next');
  v.update({...step,step:2});assert.equal(v.get('next-label').textContent,'완료');
  v.update({...step,step:2,complete:true,canContinue:true});assert.equal(v.get('next').hidden,true);assert.equal(v.get('review').hidden,false);assert.equal(v.get('guide').hidden,false);
@@ -55,13 +77,26 @@ test('typing, matching, continuation, completion and next request stay in one gu
  v.update({});assert.equal(v.get('home').hidden,false);v.close();
 });
 test('deletion has an explicit visual instruction on first open and reopening',()=>{
- const v=view();v.update({...step,after:''});assert.equal(v.get('after').hidden,true);assert.equal(v.get('delete-hint').hidden,false);assert.match(v.get('delete-hint').textContent||'',/지우세요/);
- v.update({});v.update({...step,after:''});assert.equal(v.get('delete-hint').hidden,false);v.close();
+ const v=view();v.update({...step,after:'',message:''});assert.equal(v.get('after').hidden,true);assert.equal(v.get('delete-hint').hidden,false);assert.match(v.get('delete-hint').textContent||'',/지우세요/);assert.equal(v.get('status').textContent,'','deletion needs only its own instruction');
+ v.update({});v.update({...step,after:'',message:''});assert.equal(v.get('delete-hint').hidden,false);v.close();
 });
 test('outside changes disable advancement and completion can be invalidated',()=>{
  const v=view();v.update({...step,complete:true,canContinue:true});
  v.update({...step,status:'outside',message:'다른 부분도 바뀌었어요.',canContinue:false,complete:false});
- assert.equal(v.get('review').hidden,true);assert.equal(v.get('next').hidden,false);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('status').dataset.state,'outside');v.close();
+ assert.equal(v.get('review').hidden,false);assert.equal(v.get('next').hidden,false);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('status').dataset.state,'outside');
+ v.click('review');assert.equal(v.messages.at(-1).command,'review','the comparison is reachable from the blocked state');
+ v.get('review').focus();v.update({...step,canContinue:true,status:'matched'});
+ assert.equal(v.get('review').hidden,true);assert.equal(v.document.activeElement?.id,'next','recovery keeps focus on a visible action');v.close();
+});
+test('preview fixture and theme messages never replace the current host state',()=>{
+ const v=view();v.update({...step,canContinue:true,status:'matched'});
+ for(const data of [{type:'theme',name:'light'},{type:'fixture',name:'outside'},{type:'unknown'}]){
+  v.window.dispatchEvent(new v.window.MessageEvent('message',{data}));
+  assert.equal(v.get('home').hidden,true);assert.equal(v.get('guide').hidden,false);
+  assert.equal(v.get('after').textContent,step.after);assert.equal(v.get<HTMLButtonElement>('next').disabled,false);
+ }
+ v.update({});v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusIntent'}}));
+ assert.equal(v.document.activeElement?.id,'intent','the real focus control message is still handled');v.close();
 });
 test('location and shortcut route correctly without a duplicate location button',()=>{
  const v=view();v.update({...step,canContinue:true});v.click('focus');assert.equal(v.messages.at(-1).command,'focus');
@@ -90,5 +125,6 @@ test('error, recovery, connection and empty fields have no stale text',()=>{
 test('every rendered command has a host allowlist entry and every button has an accessible name',()=>{
  const v=view();for(const b of v.document.querySelectorAll<HTMLButtonElement>('button')){assert.ok((b.getAttribute('aria-label')||b.textContent||'').trim()||['file','model'].includes(b.id),b.outerHTML);if(b.dataset.command)assert.ok(PANEL_COMMANDS.has(b.dataset.command),b.dataset.command);}
  const csp=v.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');assert.match(csp||'',/default-src 'none'/);assert.match(csp||'',/nonce-test-nonce/);
+ assert.equal(v.document.querySelectorAll('[style]').length,0,'inline style attributes would be blocked by the production nonce-only policy');
  assert.equal(v.get('after').getAttribute('aria-label'),'제안 코드');v.close();
 });

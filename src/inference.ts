@@ -103,16 +103,21 @@ export async function readCompletedText(body: ReadableStream<Uint8Array>, signal
     if (item.type === 'response.completed') {
       if (response?.status !== 'completed') throw apiError(500);
       const output: string[] = [];
-      if (Array.isArray(response.output)) for (const raw of response.output) {
-        const message = record(raw);
-        if (message?.type !== 'message' || !Array.isArray(message.content)) continue;
-        for (const part of message.content) {
-          const content = record(part);
-          if (content?.type === 'output_text' && typeof content.text === 'string') output.push(content.text);
+      if ('output' in response) {
+        if (!Array.isArray(response.output)) throw new InferenceError('응답을 읽지 못했어요. 다시 시도해 주세요.');
+        for (const raw of response.output) {
+          const message = record(raw);
+          if (message?.type !== 'message' || !Array.isArray(message.content)) continue;
+          for (const part of message.content) {
+            const content = record(part);
+            if (content?.type === 'refusal') throw new InferenceError('완료된 수정안이 없어요.');
+            if (content?.type === 'output_text' && typeof content.text === 'string') output.push(content.text);
+          }
         }
+        // A supplied terminal output is authoritative even when it is empty.
+        // Never revive a draft that the final response omitted or refused.
+        text = output.join('');
       }
-      // Prefer the final response's canonical text when supplied.
-      if (output.length) text = output.join('');
       if (text.length > MAX_JSON) throw new InferenceError('수정안이 너무 커요. 범위를 좁혀 주세요.');
       return true;
     }

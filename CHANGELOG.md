@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — audit fixes
+
+- Cancel demo/import/MCP preparation without reopening a stopped typing session.
+- Use UUID URNs for new ChatGPT registrations while preserving already-issued host bindings.
+- Treat terminal model output as authoritative; never revive a discarded or refused streamed draft.
+- Allow first-request model selection, show review when outside edits block progress, and ignore IME composition shortcuts.
+- Restore the reconnect control after revoked ChatGPT credentials, with a clear Korean recovery message.
+- Show a short first-edit instruction and a compact selected-file count; open a new request from the command palette without losing editor changes.
+- Select files across directories in one searchable checklist, preserving existing selections and allowing deselection.
+- Revalidate removed workspace roots before sending code, and refresh closed/reopened documents before accepting a typing step.
+- Bound imported JSON reads before allocation and during file growth, with clear local-file errors.
+- Keep preview state through theme changes, honor CSP and high-contrast button borders, and expand editor/DOM/auth regression coverage.
+- Native editor typing also passes on the unlocked Mac. See `docs/audit-2026-11-01.md` for performed checks and remaining interactive/live-account limits.
+
 ## 0.2.0 — 2026-11-01 (preview)
 
 - One request composer inside VS Code; remembered model choice and no extra welcome confirmation dialog.

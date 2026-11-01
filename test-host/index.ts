@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import {readFile,writeFile} from 'node:fs/promises';
+import {readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import type {Plan} from '../src/plan.js';
 
@@ -99,6 +99,95 @@ async function testAsyncSessionChanges(api:ExtensionApi,root:string){
   assert.equal(first.getText(),firstAfter,'stopping retains the human edit');
   assert.equal(await readFile(firstFile,'utf8'),firstBefore,'stopping does not save or revert the human edit');
   assert.equal(await readFile(secondFile,'utf8'),secondBefore,'the pending step never edits its target');
+
+  // A failed replacement plan leaves the current guide intact.
+  await replaceDocument(first,firstBefore);
+  await api.startPlan(plan,root);
+  await assert.rejects(api.startPlan({...replacement,steps:[{...plan.steps[1],before:'missing anchor'}]},root));
+  assert.equal(api.getState()?.file,'race-first.ts','a rejected replacement plan preserves the current session');
+
+  // Future-file changes are part of the consistency check before their turn.
+  const second=await vscode.workspace.openTextDocument(vscode.Uri.file(secondFile));
+  await replaceDocument(second,secondAfter);
+  await replaceDocument(first,firstAfter);
+  assert.equal(api.getState()?.status,'outside','editing a future file pauses acceptance of the current step');
+  await api.next();assert.equal(api.getState()?.index,0);
+  await replaceDocument(second,secondBefore);
+
+  // A target disappearing between preflight and Next cannot discard the valid guide.
+  await unlink(secondFile);
+  await assert.rejects(api.next());
+  assert.equal(api.getState()?.file,'race-first.ts');
+  assert.equal(api.getState()?.status,'matched');
+  await writeFile(secondFile,secondBefore);
+
+  // A double click must not skip over the next typing step.
+  await Promise.all([api.next(),api.next()]);
+  assert.equal(api.getState()?.index,1,'concurrent Next requests advance only once');
+  assert.equal(api.getState()?.status,'untouched');
+  assert.equal(api.getState()?.complete,false);
+  await api.stop();
+
+  const pendingDemo=vscode.commands.executeCommand('typeTheChange.demo');
+  await vscode.commands.executeCommand('typeTheChange.stop');
+  await pendingDemo;
+  assert.equal(api.getState(),null,'End Session cancels a demo that is still preparing its temporary files');
+}
+
+async function testHiddenPriorFileChanges(api:ExtensionApi,root:string){
+  const firstFile=path.join(root,'hidden-first.ts'),secondFile=path.join(root,'hidden-second.ts');
+  const firstBefore='export const first = 1;\n',firstAfter='export const first = 2;\n';
+  const secondBefore='export const second = 10;\n',secondAfter='export const second = 20;\n';
+  await writeFile(firstFile,firstBefore);await writeFile(secondFile,secondBefore);
+  await api.startPlan({version:1,title:'Hidden file changes',intent:'Keep every reviewed file consistent.',steps:[
+    {file:'hidden-first.ts',before:firstBefore,after:firstAfter,reason:'Update the first value.'},
+    {file:'hidden-second.ts',before:secondBefore,after:secondAfter,reason:'Update the second value.'},
+  ]},root);
+  const first=await vscode.workspace.openTextDocument(vscode.Uri.file(firstFile));
+  await replaceDocument(first,firstAfter);await first.save();await api.next();
+  const firstTab=vscode.window.tabGroups.all.flatMap(group=>group.tabs).find(tab=>tab.input instanceof vscode.TabInputText&&tab.input.uri.fsPath===firstFile);
+  assert.ok(firstTab,'the accepted source has a tab to close');
+  await vscode.window.tabGroups.close(firstTab,true);
+  await writeFile(firstFile,firstBefore);
+  const reopened=await vscode.workspace.openTextDocument(vscode.Uri.file(firstFile));
+  const deadline=Date.now()+5000;
+  while(reopened.getText()!==firstBefore&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+  assert.equal(reopened.getText(),firstBefore,'the hidden document receives the external disk change');
+  const second=await vscode.workspace.openTextDocument(vscode.Uri.file(secondFile));
+  await replaceDocument(second,secondAfter);
+  assert.equal(api.getState()?.status,'outside','a hidden prior file cannot be ignored when accepting the final step');
+  await api.next();assert.equal(api.getState()?.complete,false);
+  await replaceDocument(reopened,firstAfter);await api.next();
+  assert.equal(api.getState()?.complete,true,'restoring the hidden file permits review again');
+  assert.equal(await readFile(firstFile,'utf8'),firstBefore,'review does not save the restored buffer');
+  assert.equal(await readFile(secondFile,'utf8'),secondBefore,'review does not save the second buffer');
+  await api.stop();
+}
+
+async function testNewRequestFromCommandPalette(api:ExtensionApi,root:string){
+  const file=path.join(root,'new-request.ts'),original='export const value = 1;\n',replacement='export const value = 2;\n';
+  const plan:Plan={version:1,title:'A new value',intent:'Update the value.',steps:[
+    {file:'new-request.ts',before:original,after:replacement,reason:'Use the new value.'},
+  ]};
+  await writeFile(file,original);await api.startPlan(plan,root);
+  const document=await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+  const partial='export const value = ';await replaceDocument(document,partial);
+  await vscode.commands.executeCommand('typeTheChange.start');
+  assert.equal(api.getState()?.file,'new-request.ts','Start resumes the active guide');
+  await vscode.commands.executeCommand('typeTheChange.generate');
+  assert.equal(api.getState(),null,'Plan a Change opens the composer instead of keeping an active guide');
+  assert.equal(document.getText(),partial,'opening a new request preserves partial human edits');
+  assert.equal(await readFile(file,'utf8'),original,'opening a new request does not save partial edits');
+
+  await replaceDocument(document,original);await api.startPlan(plan,root);
+  await replaceDocument(document,replacement);await api.next();
+  assert.equal(api.getState()?.complete,true);
+  await vscode.commands.executeCommand('typeTheChange.start');
+  assert.equal(api.getState()?.complete,true,'Start also resumes a completed guide for review');
+  await vscode.commands.executeCommand('typeTheChange.generate');
+  assert.equal(api.getState(),null,'Plan a Change opens the composer from a completed guide');
+  assert.equal(document.getText(),replacement,'opening a new request preserves completed human edits');
+  assert.equal(await readFile(file,'utf8'),original,'opening a new request does not save completed edits');
 }
 
 async function typeCharacters(text:string){
@@ -279,6 +368,8 @@ export async function run(){
   await api.stop();assert.equal(api.getState(),null);
   await testMultipleFiles(api,root);
   await testAsyncSessionChanges(api,root);
+  await testHiddenPriorFileChanges(api,root);
+  await testNewRequestFromCommandPalette(api,root);
   const nativeTyping=await nativeTypingAvailable(root);
   if(nativeTyping)await testNativeTyping(api,root);
   await testDeletionAndPanel(api,root,nativeTyping);

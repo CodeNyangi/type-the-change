@@ -53,7 +53,7 @@ interface Tokens {
   scopes: string[];
 }
 
-class AuthError extends Error {
+export class AuthError extends Error {
   constructor(message: string, readonly oauthCode?: string) { super(message); }
 }
 class InvalidSavedAccountError extends AuthError {}
@@ -378,7 +378,17 @@ export class ChatGPTAuth {
       ? pendingRegistration : undefined;
     await this.discovery(signal);
     let hostId = await this.options.secrets.get(HOST_KEY);
-    if (!hostId) { hostId = randomUUID(); await this.options.secrets.store(HOST_KEY, hostId); }
+    if (!hostId) {
+      hostId = `urn:uuid:${randomUUID()}`;
+      await this.options.secrets.store(HOST_KEY, hostId);
+    } else if (!previous && !registeredClient && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(hostId)) {
+      // 0.2.0 stored bare UUIDs, but new SIWC registration requires a URN.
+      // Only normalize before a client has been issued. For an existing or
+      // pending registration preserve the complete host ID: the provider does
+      // not promise that a UUID and its URN are interchangeable identifiers.
+      hostId = `urn:uuid:${hostId}`;
+      await this.options.secrets.store(HOST_KEY, hostId);
+    }
     checkAborted(signal);
     const pkce = createPkce();
     const pendingClientId = previous?.clientId ?? registeredClient ?? DYNAMIC_CLIENT;

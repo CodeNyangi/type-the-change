@@ -46,6 +46,16 @@ test('completed response is authoritative over earlier deltas',async()=>{
  assert.equal(await readCompletedText(stream([{type:'response.output_text.delta',delta:'draft'},complete('final')])), 'final');
 });
 
+test('empty, refused or malformed terminal output cannot revive an earlier plan draft',async()=>{
+ const outputs:unknown[]=[[], [{type:'message',content:[]}], [{type:'message',content:[{type:'refusal',refusal:'declined'}]}],
+  [{type:'message',content:[{type:'output_text',text:planText},{type:'refusal',refusal:'declined'}]}], null, {}];
+ for(const output of outputs){
+  mock.method(globalThis,'fetch',async()=>new Response(stream([{type:'response.output_text.delta',delta:planText},{type:'response.completed',response:{status:'completed',output}}])));
+  await assert.rejects(generatePlan('test-token','chosen-model','음수 제외',sourceFiles(),{}),isInference);
+  mock.restoreAll();
+ }
+});
+
 test('SSE comments, CRLF, multiline data and byte-split Unicode are accepted',async()=>{
  const wire=': keepalive\r\n\r\nevent: ignored\r\ndata: {"type":"response.output_text.delta",\r\ndata: "delta":"한글🙂"}\r\n\r\n'+`data: ${JSON.stringify({type:'response.completed',response:{status:'completed'}})}\r\n\r\n`;
  assert.equal(await readCompletedText(rawStream(wire,1)),'한글🙂');

@@ -161,12 +161,62 @@ test('real loopback callback verifies signed identity and stores only this appâ€
   assert.equal(secrets.account().clientId, CLIENT);
   assert.equal(secrets.account().subject, 'subject-1');
   assert.equal(authorizations[0].searchParams.get('ext_agent_host_id'), secrets.values.get(HOST));
+  assert.match(secrets.values.get(HOST)!, /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(requests.filter(req => req.form.get('grant_type') === 'authorization_code').length, 1);
   await auth.signIn();
   assert.equal(authorizations[1].searchParams.get('client_id'), CLIENT);
   assert.ok(authorizations[1].searchParams.get('id_token_hint'));
   assert.equal(authorizations[1].searchParams.has('agent_name_hint'), false);
   assert.notEqual(authorizations[0].searchParams.get('state'), authorizations[1].searchParams.get('state'));
+  assert.equal(authorizations[0].searchParams.get('ext_agent_host_id'), authorizations[1].searchParams.get('ext_agent_host_id'));
+});
+
+test('unregistered legacy bare host UUIDs gain the required URN prefix', async () => {
+  const { auth, secrets, authorizations } = fixture();
+  const legacyHost = 'e63fc739-28be-4bfd-b564-431ef6b036d1';
+  secrets.values.set(HOST, legacyHost);
+  await auth.signIn();
+  assert.equal(secrets.values.get(HOST), `urn:uuid:${legacyHost}`);
+  assert.equal(authorizations[0].searchParams.get('ext_agent_host_id'), `urn:uuid:${legacyHost}`);
+  assert.equal(authorizations[0].searchParams.get('client_id'), 'dynamic_agent_client');
+});
+
+test('registered legacy host IDs remain byte-exact with their account and client binding', async () => {
+  const { auth, secrets, authorizations } = fixture();
+  await auth.signIn();
+  const account = secrets.account();
+  const legacyHost = 'e63fc739-28be-4bfd-b564-431ef6b036d1';
+  secrets.values.set(HOST, legacyHost);
+  await auth.signIn();
+  assert.equal(secrets.values.get(HOST), legacyHost);
+  assert.equal(authorizations[1].searchParams.get('ext_agent_host_id'), legacyHost);
+  assert.equal(authorizations[1].searchParams.get('client_id'), account.clientId);
+  assert.equal(secrets.account().subject, account.subject);
+  assert.equal(authorizations[1].searchParams.get('id_token_hint'), account.idToken);
+  await auth.signIn();
+  assert.equal(authorizations[2].searchParams.get('ext_agent_host_id'), legacyHost);
+});
+
+test('pending legacy registrations preserve their issued client and exact host ID on retry', async () => {
+  const { auth, secrets, authorizations } = fixture({ authorizationErrorOnce: true });
+  await assert.rejects(auth.signIn(), /Sign in again/);
+  const legacyHost = 'e63fc739-28be-4bfd-b564-431ef6b036d1';
+  secrets.values.set(HOST, legacyHost);
+  await auth.signIn();
+  assert.equal(secrets.values.get(HOST), legacyHost);
+  assert.equal(authorizations[1].searchParams.get('ext_agent_host_id'), legacyHost);
+  assert.equal(authorizations[1].searchParams.get('client_id'), CLIENT);
+});
+
+test('existing supported host identifiers remain stable across sign-ins', async () => {
+  for (const hostId of ['urn:uuid:e63fc739-28be-4bfd-b564-431ef6b036d1', 'urn:ietf:params:oauth:jwk-thumbprint:sha-256:test-thumbprint', 'did:key:test-key']) {
+    const { auth, secrets, authorizations } = fixture();
+    secrets.values.set(HOST, hostId);
+    await auth.signIn();
+    assert.equal(secrets.values.get(HOST), hostId);
+    assert.equal(authorizations[0].searchParams.get('ext_agent_host_id'), hostId);
+    mock.restoreAll();
+  }
 });
 
 test('invalid JWT signature, nonce or audience never saves credentials', async () => {
