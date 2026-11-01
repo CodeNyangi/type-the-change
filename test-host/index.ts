@@ -230,7 +230,8 @@ async function assertGuideBesideSource(file:string,sourceFocused=false){
 async function startFixture(api:ExtensionApi,root:string,file:string,original:string,steps:Plan['steps']){
   await writeFile(path.join(root,file),original);
   await api.startPlan({version:1,title:'Native typing',intent:'Change the selected source by typing.',steps},root);
-  await assertGuideBesideSource(path.join(root,file),true);
+  await assertGuideBesideSource(path.join(root,file));
+  await api.predict('The changed branch returns the expected value for this input.');
   const editor=vscode.window.activeTextEditor;
   assert.ok(editor,'starting guidance focuses a native editor');
   assert.equal(editor.document.uri.fsPath,path.join(root,file));
@@ -279,7 +280,6 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     assert.equal(editor.document.lineAt(1).text,'  return buildGreeting("Ada");','typing closing delimiters steps over auto-inserted characters');
     assert.equal(api.getState()?.status,'matched','native automatic pairs count as exact code');
     assert.equal(api.getState()?.complete,false,'matching alone is never a judgment');
-    await api.predict('The function returns the generated greeting for Ada.');
     await vscode.commands.executeCommand('typeTheChange.next');
     assert.equal(api.getState()?.complete,false,'the keyboard command only opens comparison');
     assert.equal(api.getState()?.judgment.phase,'review');
@@ -317,6 +317,7 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     assert.equal(api.getState()?.status,'matched');await acceptMatched(api);
     assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
     assert.equal(sequence.document.getText(vscode.window.visibleTextEditors.find(editor=>editor.document.uri.toString()===sequence.document.uri.toString())!.selection),'return amount;','the second same-file replacement is selected without a mouse');
+    await api.predict('Negative amounts become zero; positive amounts remain unchanged.');
     await typeCharacters('return Math.max(0, amount);');
     assert.equal(api.getState()?.status,'matched');await acceptMatched(api);assert.equal(api.getState()?.complete,true);
     assert.equal(await readFile(path.join(root,'native-sequence.ts'),'utf8'),sequenceOriginal);await api.stop();
@@ -412,7 +413,7 @@ export async function run(){
   assert.equal(guideTabs().length,1,'the home panel opens in an otherwise empty workbench');
   const plan:Plan={version:1,title:'Greet warmly',intent:'Change the greeting',steps:[{file:'sample.ts',before:'  return "hi";',after:'  return "hello";',reason:'Keep the same function and change its return value.'}]};
   await api.startPlan(plan,root);
-  await assertGuideBesideSource(file,true);
+  await assertGuideBesideSource(file);
   let editor=vscode.window.visibleTextEditors.find(e=>e.document.uri.fsPath===file)!;assert.ok(editor);
   assert.equal(editor.document.getText(),original,'starting never edits source');
   assert.equal(await readFile(file,'utf8'),original,'disk source unchanged');

@@ -22,6 +22,7 @@ async function fixture(){
   await writeFile(path.join(root,'a.ts'),beforeA);await writeFile(path.join(root,'b.ts'),beforeB);
   const documents=new Map<string,TestDocument>(),opening=new Map<string,Promise<TestDocument>>(),commands=new Map<string,(...args:unknown[])=>unknown>();
   const uiEvents:{type:'source'|'guide';viewColumn:number;preserveFocus:boolean}[]=[];
+  const panelStates:{file?:string;busy?:boolean}[]=[];
   let beforeShowSource:(()=>Promise<void>)|undefined;
   const opened=new Set<(document:TestDocument)=>void>(),closed=new Set<(document:TestDocument)=>void>(),changed=new Set<(event:{document:TestDocument})=>void>();
   const disposable=()=>({dispose(){}}),event=(_handler:unknown)=>disposable();
@@ -53,7 +54,7 @@ async function fixture(){
       async showTextDocument(document:TestDocument,options:{viewColumn:number;preserveFocus:boolean}){assert.equal(document.isClosed,false,'guidance must not focus a disposed document');await beforeShowSource?.();uiEvents.push({type:'source',...options});return {document,selection:undefined,revealRange(){}};},
       createWebviewPanel:(_type:string,_title:string,options:{viewColumn:number;preserveFocus:boolean})=>{
         uiEvents.push({type:'guide',...options});
-        return {...disposable(),viewColumn:options.viewColumn===-2?1:options.viewColumn,reveal(viewColumn:number,preserveFocus:boolean){this.viewColumn=viewColumn;uiEvents.push({type:'guide',viewColumn,preserveFocus});},onDidDispose:event,webview:{html:'',onDidReceiveMessage:event,async postMessage(){return true;}}};
+        return {...disposable(),viewColumn:options.viewColumn===-2?1:options.viewColumn,reveal(viewColumn:number,preserveFocus:boolean){this.viewColumn=viewColumn;uiEvents.push({type:'guide',viewColumn,preserveFocus});},onDidDispose:event,webview:{html:'',onDidReceiveMessage:event,async postMessage(state:{file?:string;busy?:boolean;type?:string}){if(!state.type)panelStates.push(state);return true;}}};
       },
     },
   };
@@ -69,7 +70,7 @@ async function fixture(){
   const open=(file:string)=>workspace.openTextDocument(uri(path.join(root,file)));
   const run=async(name:string)=>{const command=commands.get(`typeTheChange.${name}`);assert.ok(command);await command();};
   async function acceptMatch(){if(api.getState()?.complete)return;if(api.getState()?.judgment.phase==='predict')await api.predict('수정한 상수가 새 값으로 평가된다');await api.next();if(api.getState()?.status==='matched'&&!api.getState()?.complete)await api.decide({decision:'keep',evidence:'비교에서 상수의 값과 주변 코드 보존 확인'});}
-  return {root,api,acceptMatch,plan,beforeA,afterA,beforeB,afterB,open,edit,closeDocument,run,uiEvents,onShowSource(callback:()=>Promise<void>){beforeShowSource=callback;},async close(){
+  return {root,api,acceptMatch,plan,beforeA,afterA,beforeB,afterB,open,edit,closeDocument,run,uiEvents,panelStates,onShowSource(callback:()=>Promise<void>){beforeShowSource=callback;},async close(){
     await api.stop();for(const subscription of subscriptions)subscription.dispose();
     // Status snapshots already queued by render() finish asynchronously. Retry
     // only transient removal failures while those owned bridge files drain.
@@ -84,11 +85,24 @@ test('starting guidance from the home panel opens source first and reveals the g
     await f.api.startPlan(f.plan,f.root);
     assert.deepEqual(f.uiEvents.map(({type,viewColumn,preserveFocus})=>({type,viewColumn,preserveFocus})),[
       {type:'source',viewColumn:1,preserveFocus:false},
-      {type:'guide',viewColumn:2,preserveFocus:true},
+      {type:'guide',viewColumn:2,preserveFocus:false},
     ]);
     await f.run('start');
     assert.equal(f.uiEvents.at(-1)?.viewColumn,2,'reopening active guidance does not keep splitting relative to the focused group');
   }finally{await f.close();}
+});
+
+test('prediction cannot appear or accept text before pending native focus has finished',async()=>{
+  const f=await fixture();let release!:()=>void,reached!:()=>void;
+  const pending=new Promise<void>(resolve=>release=resolve),ready=new Promise<void>(resolve=>reached=resolve);
+  try{
+    await f.run('start');f.onShowSource(async()=>{reached();await pending;});
+    const starting=f.api.startPlan(f.plan,f.root);await ready;
+    assert.equal(f.panelStates.at(-1)?.file,undefined);assert.equal(f.panelStates.at(-1)?.busy,true);
+    await f.api.predict('too early');assert.equal(f.api.getState()?.judgment.phase,'predict');
+    release();await starting;assert.equal(f.panelStates.at(-1)?.file,'a.ts');
+    assert.equal(f.uiEvents.at(-1)?.type,'guide');assert.equal(f.uiEvents.at(-1)?.preserveFocus,false,'prediction owns final focus');
+  }finally{release();await f.close();}
 });
 
 test('stopping while native source focus is pending cannot reveal stale guidance afterward',async()=>{

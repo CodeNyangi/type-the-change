@@ -15,7 +15,7 @@ import {pickFiles} from './file-picker.js';
 import {TaskChecks,type CheckResult} from './task-checks.js';
 
 type ReviewRecord={step:number;file:string;prediction:string;evidence:string;decision:Decision;sourceHash:string;recordedAt:string;check?:CheckResult};
-type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;revision:number;check?:CheckResult;checking?:boolean;demoTask?:vscode.Task;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
+type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;ready:boolean;revision:number;check?:CheckResult;checking?:boolean;demoTask?:vscode.Task;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
 const USAGE='https://chatgpt.com/settings/usage';
 export function activate(context:vscode.ExtensionContext){
   let session:Session|undefined,busy=false,timer:NodeJS.Timeout|undefined,generationAbort:AbortController|undefined;
@@ -85,6 +85,7 @@ export function activate(context:vscode.ExtensionContext){
   function render(){
     const common:PanelState={files:composer.files,model:composer.modelName,connected:composer.connected,busy,phase:composer.phase,error:composer.error,notice:composer.notice};
     if(!session){panel.update(common);return;}
+    if(!session.ready){panel.update({...common,busy:true,phase:'변경 여는 중'});return;}
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);
     // Disposal temporarily removes comparison evidence. Keep the recorded
     // review until reopening establishes whether code actually changed.
@@ -131,21 +132,21 @@ export function activate(context:vscode.ExtensionContext){
     if(epoch!==sessionEpoch)return;
     for(const [file,snapshot]of files)if(documents.get(file)?.getText()!==snapshot)throw Error('수정안을 여는 동안 파일이 바뀌었어요. 다시 열어 주세요.');
     checks.cancel();
-    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],revision:0,originalFiles:new Map(files),expectedFiles:files,documents};session=current;
+    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],ready:false,revision:0,originalFiles:new Map(files),expectedFiles:files,documents};session=current;
     await vscode.commands.executeCommand('setContext','typeTheChange.active',true);
     if(session!==current||epoch!==sessionEpoch)return;
     composer.error='';composer.notice='';render();await focus(true);
     // Establish the native source group before moving a home panel out of it.
-    if(session!==current||epoch!==sessionEpoch)return;panel.show(true);
+    if(session!==current||epoch!==sessionEpoch)return;current.ready=true;render();panel.focusStep();
   }
   async function next(){
     if(!session)return;
     const s=session;if(!await refreshSessionDocuments(s))return;render();if(s.complete)return;
     await review();
   }
-  async function makePrediction(value:unknown){if(session){predict(session.judgment,value);render();await focus();}}
+  async function makePrediction(value:unknown){if(session?.ready){predict(session.judgment,value);render();await focus();}}
   async function advance(){
-    if(!session)return;
+    if(!session?.ready)return;
     if(session.judgment.phase==='predict'||session.judgment.phase==='review'||session.judgment.phase==='done'){panel.focusStep();return;}
     await runCheck();
   }
