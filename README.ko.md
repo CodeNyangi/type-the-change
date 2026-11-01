@@ -4,7 +4,7 @@
 
 **AI가 제안하고, 내가 예상하고, 확인하고, 판단합니다.**
 
-[English](README.md) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases) · [문제 제보](https://github.com/CodeNyangi/type-the-change/issues/new/choose)
+[English](README.md) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases) · [문제 제보](https://github.com/CodeNyangi/type-the-change/issues/new/choose)
 
 AI와 코딩하면서 내 판단을 연습하는 작은 VS Code 확장입니다. 평소 편집기에서 코드를 직접 살피고, 변경을 유지할지 결정합니다. 제안과 글자가 같다는 이유만으로 완료되지 않습니다.
 
@@ -26,7 +26,7 @@ AI와 코딩하면서 내 판단을 연습하는 작은 VS Code 확장입니다.
 
 로컬 VS Code 1.100 이상이 필요합니다. 현재는 한국어 UI의 미리보기입니다.
 
-1. [GitHub Releases](https://github.com/CodeNyangi/type-the-change/releases)에서 VSIX를 받아 **Extensions: Install from VSIX…**로 설치합니다.
+1. [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change)에서 **CodeNyangi의 Type the Change**를 설치합니다. GitHub에서 받은 VSIX는 **Extensions: Install from VSIX…**로 설치할 수 있습니다.
 2. **Type the Change: Try the Demo**를 실행합니다. `[10, -5, 20]`의 합계를 먼저 예상합니다.
 3. 직접 고치고 **비교하고 판단**을 누른 뒤, 확인한 근거를 기록합니다.
 
@@ -34,7 +34,7 @@ AI와 코딩하면서 내 판단을 연습하는 작은 VS Code 확장입니다.
 
 영상의 틀린 제안을 직접 판단하려면 [`examples/judgment`](examples/judgment/README.md) 폴더를 열고 **Type the Change: Open a Plan**으로 `plan.json`을 가져오세요. 저장한 다음 터미널에서 `node check.mjs`를 실행합니다. 다른 입력도 확인해 보세요. 데모와 JSON 가져오기는 로그인 없이 동작합니다.
 
-**배포 상태:** 0.3.0 판단 흐름은 검토용 빌드입니다. 이전에 배포된 버전은 글자 일치로 진행할 수 있으니 [버전과 변경 기록](CHANGELOG.md)을 확인하세요. 개인 게시자 CodeNyangi를 등록했고 첫 Marketplace 배포를 준비하고 있습니다. 실제 계정으로 ChatGPT에 동의하고 구독으로 제안을 생성하는 과정은 아직 검증 전입니다.
+**미리보기:** 0.3.0부터 예상·근거·판단 흐름을 제공합니다. 이전에 배포된 버전은 글자 일치로 진행할 수 있으니 [버전과 변경 기록](CHANGELOG.md)을 확인하세요. 실제 계정으로 ChatGPT에 동의하고 구독으로 제안을 생성하는 과정은 아직 검증 전입니다.
 
 ## ChatGPT로 코드 수정안 만들기
 

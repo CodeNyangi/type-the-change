@@ -22,11 +22,11 @@ release does not mean the extension is on the Marketplace.
 
 ## First publication
 
-1. The owner reviews the draft PR and the exact installable package. No automatic
-   merge or publishing is configured.
+1. Publishing is performed only on the owner’s request after checks pass. The
+   source PR stays available for the owner’s review; no automatic merge or
+   publishing on push is configured.
 2. For future administration, sign in to [Manage Publishers](https://marketplace.visualstudio.com/manage/publishers/)
-   using the owner's Microsoft account. Create a publisher with the ID and display
-   name above, if available. The owner supplies the account and contact information.
+   using the owner's Microsoft account. The registered publisher is CodeNyangi. The owner retains account and contact information control.
 3. In the publisher portal, choose **New extension → Visual Studio Code**, and
    upload the reviewed VSIX. Check the listing, media links, and version before
    confirming publication.

@@ -4,7 +4,7 @@
 
 **AI suggests. You predict, check, and decide.**
 
-[한국어](README.ko.md) · [Download VSIX](https://github.com/CodeNyangi/type-the-change/releases) · [Report an issue](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [Contribution policy](CONTRIBUTING.md)
+[한국어](README.ko.md) · [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [Download VSIX](https://github.com/CodeNyangi/type-the-change/releases) · [Report an issue](https://github.com/CodeNyangi/type-the-change/issues/new/choose) · [Contribution policy](CONTRIBUTING.md)
 
 A small, open-source VS Code extension for practicing judgment while coding with AI. Keep your own editor, inspect a proposed change, and decide whether the actual code deserves to stay. Exact text matching never approves a change.
 
@@ -26,7 +26,7 @@ These are your judgments, not an automatic correctness grade. The extension does
 
 Requires local desktop VS Code 1.100+. This is a preview, currently with a Korean interface.
 
-1. Download a `.vsix` from [GitHub Releases](https://github.com/CodeNyangi/type-the-change/releases), then run **Extensions: Install from VSIX…**.
+1. Install **Type the Change** by **CodeNyangi** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change). For a downloaded GitHub VSIX, use **Extensions: Install from VSIX…**.
 2. Run **Type the Change: Try the Demo**. Predict the total of `[10, -5, 20]`.
 3. Type your change, choose **비교하고 판단**, and record what you checked.
 
@@ -34,7 +34,7 @@ Requires local desktop VS Code 1.100+. This is a preview, currently with a Korea
 
 For the video's deliberately wrong proposal, open [`examples/judgment`](examples/judgment/README.md) as a folder, import its `plan.json` with **Type the Change: Open a Plan**, and run `node check.mjs` yourself after saving. Test other inputs too. Demo and imported plans work offline without a sign-in.
 
-**Release status:** the 0.3.0 judgment workflow is a review build. Published older versions may still use text-matching progression. Check the version and [changelog](CHANGELOG.md). The owner’s personal publisher, CodeNyangi, is registered; first Marketplace publication is being prepared. Real-account ChatGPT consent and subscription-backed generation remain unverified; local examples and JSON import do not depend on them.
+**Preview:** 0.3.0 introduces the judgment workflow. Published older versions may still use text-matching progression. Check the version and [changelog](CHANGELOG.md). Real-account ChatGPT consent and subscription-backed generation remain unverified; local examples and JSON import do not depend on them.
 
 ## AI-assisted coding with ChatGPT
 
