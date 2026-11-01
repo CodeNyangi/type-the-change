@@ -1,7 +1,7 @@
 {
   "name": "type-the-change",
   "displayName": "Type the Change",
-  "description": "Let AI point out the change. Type it yourself, in your own code.",
+  "description": "A VS Code extension for AI-assisted coding: read a proposed change, type it yourself, and review the diff. ChatGPT and MCP.",
   "version": "0.2.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
@@ -15,9 +15,9 @@
     "Other"
   ],
   "keywords": [
-    "learning",
-    "typing",
-    "code review",
+    "ai-assisted-coding",
+    "deliberate-practice",
+    "code-review",
     "mcp",
     "chatgpt"
   ],

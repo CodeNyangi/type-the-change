@@ -1,0 +1,39 @@
+name: Bug report / 버그 제보
+description: Something did not work as expected. / 예상과 다르게 동작했어요.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Korean and English are welcome. 한국어로 편하게 작성해 주세요.
+        Use a small example and remove tokens, private source, and personal paths from logs or images. For sensitive findings, follow [SECURITY.md](https://github.com/CodeNyangi/type-the-change/blob/main/SECURITY.md).
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened? / 어떤 문제가 있었나요?
+      description: Include what you expected to happen. / 기대한 동작도 함께 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce / 재현 방법
+      description: Which command or button did you use, and what did you type? If it is intermittent, describe the last steps you remember.
+      placeholder: |
+        1. Open ...
+        2. Run or click ...
+        3. Type ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment / 사용 환경
+      description: Extension version, VS Code version, and operating system; include relevant editor settings if known.
+      placeholder: Type the Change version · VS Code version · macOS / Windows / Linux
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Optional evidence / 참고 자료
+      description: A minimal sample, error message, or redacted screenshot can help. Do not include real account tokens or private workspace plans.

@@ -1,0 +1,29 @@
+name: Feature proposal / 개선 제안
+description: Suggest a concrete improvement. / 더 나은 사용 방법을 제안해 주세요.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Korean and English are welcome. 한국어로 편하게 작성해 주세요.
+        A real situation is enough to start a discussion; you do not need an implementation plan.
+  - type: textarea
+    id: situation
+    attributes:
+      label: What are you trying to do? / 어떤 상황인가요?
+      description: Describe the task and the limitation you run into. / 하려던 일과 현재의 불편함을 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What should become easier? / 어떻게 나아지면 좋을까요?
+      description: Describe the behavior you would like. A rough example is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or tradeoffs / 다른 방법이나 고려할 점
+      description: Optional. A current workaround, a simpler approach, or a concern about the idea.
