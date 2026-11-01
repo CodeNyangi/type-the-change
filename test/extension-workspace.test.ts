@@ -27,7 +27,7 @@ async function fixture(){
   let reads=0,pickers=0,selection:string[]|undefined=['source.ts'],items:FilePick[]=[],pickerTitle='';
   const listed=[file],findCalls:unknown[][]=[];
   const workspace={
-    isTrusted:true,workspaceFolders:[{name:'Primary project',uri:uri(primary)},{name:'Selected project',uri:uri(selected)}],
+    isTrusted:true,textDocuments:[],workspaceFolders:[{name:'Primary project',uri:uri(primary)},{name:'Selected project',uri:uri(selected)}],
     getWorkspaceFolder(target:{fsPath:string}){return this.workspaceFolders.find(folder=>target.fsPath===folder.uri.fsPath||target.fsPath.startsWith(folder.uri.fsPath+path.sep));},
     registerTextDocumentContentProvider:disposable,onDidChangeTextDocument:event,onDidOpenTextDocument:event,onDidCloseTextDocument:event,
     createFileSystemWatcher:()=>({...disposable(),onDidCreate:event,onDidChange:event}),
@@ -38,15 +38,24 @@ async function fixture(){
     env:{remoteName:undefined,openExternal:async()=>assert.fail('No browser authentication should start')},
     Uri:{file:uri},StatusBarAlignment:{Left:1},ViewColumn:{Beside:-2},
     RelativePattern:class{constructor(readonly base:string,readonly pattern:string){}},
+    CancellationTokenSource:class{token={};cancel(){}dispose(){}},extensions:{getExtension(){}},
     ThemeColor:class{constructor(readonly id:string){}},DecorationRangeBehavior:{ClosedClosed:1},workspace,
     commands:{registerCommand(name:string,action:(...args:unknown[])=>unknown){commands.set(name,action);return disposable();},async executeCommand(name:string,...args:unknown[]){return commands.get(name)?.(...args);}},
     window:{
       activeTextEditor:{document:{uri:uri(file)}},visibleTextEditors:[],
       createStatusBarItem:()=>({...disposable(),show(){}}),createTextEditorDecorationType:disposable,onDidChangeVisibleTextEditors:event,
-      async showQuickPick(options:Promise<FilePick[]>|FilePick[],config:{canPickMany:boolean;title:string}){
-        pickers++;assert.equal(config.canPickMany,true);pickerTitle=config.title;items=await options;
-        if(selection===undefined)return undefined;
-        return selection.map(file=>{const item=items.find(item=>item.file===file);assert.ok(item,`selectable ${file}`);return item;});
+      createQuickPick(){
+        const handlers:Record<string,Function>={};
+        const picker={items:[] as FilePick[],selectedItems:[] as FilePick[],title:'',busy:false,canSelectMany:false,
+          onDidChangeSelection(fn:Function){handlers.selection=fn;return disposable();},onDidChangeValue(fn:Function){handlers.value=fn;return disposable();},onDidAccept(fn:Function){handlers.accept=fn;return disposable();},onDidHide(fn:Function){handlers.hide=fn;return disposable();},dispose(){},
+          show(){pickers++;assert.equal(this.canSelectMany,true);pickerTitle=this.title;
+            if(selection===undefined){items=this.items.map(item=>({...item,picked:this.selectedItems.includes(item)}));handlers.hide();return;}
+            // Exercise the production asynchronous search and selection handlers.
+            handlers.value('source');
+            const complete=()=>{if(this.busy){setTimeout(complete,10);return;}items=this.items.map(item=>({...item,picked:this.selectedItems.includes(item)}));
+              const chosen=selection!.map(file=>{const item=this.items.find(item=>item.file===file);assert.ok(item,`selectable ${file}`);return item;});handlers.selection(chosen);handlers.accept();};complete();
+          },
+        };return picker;
       },
       withProgress:async()=>assert.fail('No authentication flow should start'),
       createWebviewPanel:()=>({...disposable(),reveal(){},onDidDispose:event,webview:{html:'',onDidReceiveMessage:event,async postMessage(state:PanelState){messages.push(state);return true;}}}),
@@ -75,8 +84,8 @@ test('file selection spans directories and remembers checked paths without readi
     f.select(['src/foo.ts','tests/foo.test.ts']);const reads=f.reads;await f.run('chooseFiles');
     assert.deepEqual(f.messages.at(-1)?.files,['src/foo.ts','tests/foo.test.ts']);assert.equal(f.reads,reads+2);
     assert.match(f.pickerTitle,/Selected project/);
-    const discovery=f.findCalls.at(-1)!;assert.equal(discovery.length,1,'no explicit excludes override defaults and no maxResults silently truncates candidates');
-    assert.equal((discovery[0] as {base:string;pattern:string}).base,f.selected);assert.equal((discovery[0] as {base:string;pattern:string}).pattern,'**/*');
+    const discovery=f.findCalls.at(-1)!;assert.equal(discovery.length,4);assert.equal(discovery[1],undefined,'normal search exclusions remain enabled');assert.equal(discovery[2],200,'query results are bounded');
+    assert.equal((discovery[0] as {base:string;pattern:string}).base,f.selected);assert.notEqual((discovery[0] as {base:string;pattern:string}).pattern,'**/*');
     f.select(undefined);const selectedReads=f.reads;await f.run('chooseFiles');
     assert.deepEqual(f.items.filter(item=>item.picked).map(item=>item.file).sort(),['src/foo.ts','tests/foo.test.ts']);
     assert.deepEqual(f.messages.at(-1)?.files,['src/foo.ts','tests/foo.test.ts']);assert.equal(f.reads,selectedReads,'cancelling and listing names do not open source contents');
@@ -118,10 +127,10 @@ test('a selected file omitted by workspace search stays visible and can be expli
   const f=await fixture();
   try{
     f.omitFromSearch('source.ts');f.select(undefined);const reads=f.reads;await f.run('chooseFiles');
-    assert.deepEqual(f.items,[{label:'source.ts',file:'source.ts',picked:true}]);
+    assert.deepEqual(f.items.map(({file,picked})=>({file,picked})),[{file:'source.ts',picked:true}]);
     assert.deepEqual(f.messages.at(-1)?.files,['source.ts']);assert.equal(f.reads,reads);
     f.select([]);await f.run('chooseFiles');assert.deepEqual(f.messages.at(-1)?.files,[]);
-    f.select(undefined);await f.run('chooseFiles');assert.deepEqual(f.items,[],'an explicit deselection restores normal search exclusion');
+    f.select(undefined);await f.run('chooseFiles');assert.equal(f.items[0]?.picked,false,'an open file stays discoverable without staying selected');
   }finally{await f.close();}
 });
 

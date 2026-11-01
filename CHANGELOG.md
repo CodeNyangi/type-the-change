@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — keyboard and task workflow (preview)
+
+- Continue from prediction to source editing, explicit Save and Check, diff and human decision using keyboard controls. Continuing or passing a task never adopts a proposal.
+- Reuse a selected existing VS Code task, keep its terminal hidden, show exit status and available diagnostics beside the code, and support cancellation. Save only reviewed files; mark changed-code evidence stale.
+- Use open files and Git changes as initial file choices. Search only after typing, cap each query at 200 paths, cancel stale requests and preserve selections across searches.
+- Add a built-in offline demo check and a configured task for the public counterexample. Update the tutorial to the integrated keyboard workflow.
+- Keep the existing eight-file / 64 KiB context bounds. Whole-repository impact analysis and automatic test selection are not claimed.
+
 ## 0.3.0 — judgment workflow (review build)
 
 - Predict an outcome before revealing a proposal. Compare the actual buffer, record evidence, and explicitly keep, reject, or defer.

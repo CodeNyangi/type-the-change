@@ -15,12 +15,12 @@ A small, open-source VS Code extension for practicing judgment while coding with
 The captioned video uses real VS Code, a deliberately wrong local proposal, and a real test run. It shows why `break` still loses a price, then keeps the author's `continue` alternative. No live AI account is needed.
 
 1. **Predict.** Write one short expected result before revealing the suggestion.
-2. **Check.** Edit normally, run your own checks, then compare the actual buffer.
+2. **Check.** Edit normally, save and run a selected check with a shortcut, then inspect the actual diff.
 3. **Decide.** Record the evidence and keep your change, reject the proposal, or defer.
 
 The guide stays beside your code in the same VS Code window. You can keep a different implementation within the guided range. If code changes after comparison, previous evidence no longer approves it. If your alternative invalidates a later planned step, the guide asks for a new plan.
 
-These are your judgments, not an automatic correctness grade. The extension does not run checks, apply changes, undo a rejected edit, or save your files. Learning and better judgment are design goals; learning gains have not been measured.
+These are your judgments, not an automatic correctness grade. **Save and Check** saves only files in the current review and runs the VS Code task you selected. The extension does not apply a proposal or undo a rejected edit. Learning and better judgment are design goals; learning gains have not been measured.
 
 ## Start in a minute
 
@@ -28,13 +28,22 @@ Requires local desktop VS Code 1.100+. This is a preview, currently with a Korea
 
 1. Install **Type the Change** by **CodeNyangi** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change). For a downloaded GitHub VSIX, use **Extensions: Install from VSIX…**.
 2. Run **Type the Change: Try the Demo**. Predict the total of `[10, -5, 20]`.
-3. Type your change, choose **비교하고 판단**, and record what you checked.
+3. Submit the prediction with **⌘Enter / Ctrl+Enter**. Edit, then press **⌘⌥Enter / Ctrl+Alt+Enter** to save and check.
+4. Compare the result with your expectation and write one reason. **⌘Enter / Ctrl+Enter** moves to the decision buttons; **← →** selects and **Enter** records your decision.
 
-**제안 보기** reveals help. **직접 바꾸기** or **⌘⌥T / Ctrl+Alt+T** returns to the source. **⌘⌥Enter / Ctrl+Alt+Enter** opens comparison; it never accepts a change. **이 변경 유지**, **제안 거절**, and **보류** record distinct decisions. **×** ends the guide and preserves edits.
+Submitting the prediction reveals the proposal and returns focus to your code. **⌘⌥T / Ctrl+Alt+T** returns to the change. Continuing never automatically accepts it. **×** ends guidance and preserves edits.
 
-For the video's deliberately wrong proposal, open [`examples/judgment`](examples/judgment/README.md) as a folder, import its `plan.json` with **Type the Change: Open a Plan**, and run `node check.mjs` yourself after saving. Test other inputs too. Demo and imported plans work offline without a sign-in.
+For a real project, choose an existing foreground **VS Code task** once. Later checks reuse it; a changed task definition requires selection again. **검사 옵션** lets you change tasks or compare without running one. The latter never saves files. Task progress, exit status, and available problem-matcher diagnostics appear beside the code. Tasks without a process exit remain **unverified**, not passed. Editing a reviewed file during or after execution invalidates that result. Checks run through VS Code's normal task system, including the task's own behavior and dependencies; no command comes from the AI plan.
 
-**Preview:** 0.3.0 introduces the judgment workflow. Published older versions may still use text-matching progression. Check the version and [changelog](CHANGELOG.md). Real-account ChatGPT consent and subscription-backed generation remain unverified; local examples and JSON import do not depend on them.
+For the video's deliberately wrong proposal, open [`examples/judgment`](examples/judgment/README.md) as a folder and import `plan.json`. Its check task is included. Demo and imported plans work offline without sign-in.
+
+**Preview:** 0.4.0 adds the keyboard and task workflow. Real-account ChatGPT consent and subscription-backed generation remain unverified.
+
+## Working in a large repository
+
+Choose the change and checks relevant to one decision. File selection starts with open files and existing Git changes. A typed query searches at most 200 matching paths using VS Code's normal exclusions; selected paths remain pinned across queries. Refine a broad query to reach another file. Opening the picker never requests the entire file list.
+
+A generation request is still limited to eight files, each at most 64 KiB. Total repository size is separate from the reviewed context. This preview does not provide whole-repository impact analysis, giant-file support, or automatic test selection. Choose a module's task locally and keep full regression checks in your project's CI.
 
 ## AI-assisted coding with ChatGPT
 

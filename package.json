@@ -2,7 +2,7 @@
   "name": "type-the-change",
   "displayName": "Type the Change",
   "description": "Practice judgment with AI code: predict the outcome, inspect the diff, and keep or reject a proposal with evidence. VS Code, ChatGPT and MCP.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
@@ -74,7 +74,19 @@
       },
       {
         "command": "typeTheChange.next",
-        "title": "Type the Change: Compare and Decide"
+        "title": "Type the Change: Compare Without Running a Check"
+      },
+      {
+        "command": "typeTheChange.advance",
+        "title": "Type the Change: Next Action"
+      },
+      {
+        "command": "typeTheChange.runCheck",
+        "title": "Type the Change: Save and Check"
+      },
+      {
+        "command": "typeTheChange.chooseCheck",
+        "title": "Type the Change: Select Check Task"
       },
       {
         "command": "typeTheChange.focus",
@@ -111,7 +123,7 @@
     ],
     "keybindings": [
       {
-        "command": "typeTheChange.next",
+        "command": "typeTheChange.advance",
         "key": "ctrl+alt+enter",
         "mac": "cmd+alt+enter",
         "when": "typeTheChange.active"
@@ -121,6 +133,21 @@
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t",
         "when": "typeTheChange.active"
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "type-the-change",
+        "owner": "type-the-change-demo",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (error|warning) (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
       }
     ]
   },

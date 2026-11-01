@@ -49,6 +49,7 @@ const states={
   'delete-revealed':{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
   complete:{...step,status:'matched',canContinue:true,complete:true,step:2,judgment:done},
 };
+for(const status of ['running','passed','failed','unknown','cancelled','stale','error'])states['check-'+status]={...step,judgment:status==='running'?judgment:reviewed,checking:status==='running',check:{task:'관련 모듈 검사',status,sourceHash:'hash',durationMs:1000,exitCode:status==='passed'?0:status==='failed'?1:undefined,details:status==='failed'?['가격.ts:5 예상 30, 실제 10']:[]}};
 const report={startedAt:new Date().toISOString(),mode:'Chromium headless with isolated browser context and mocked VS Code host',limits:['No native VS Code window or OS keyboard/IME was used.','Composition events verify the JavaScript guard, not real Korean input-method behavior.','No live account, provider request, or source-file edit was performed.','Representative theme tokens and accessibility checks are not a full WCAG or screen-reader certification.'],browser:'',matrix:[],interactionChecks:[],errors:[]};
 let browser,page;
 try{
@@ -81,7 +82,7 @@ try{
       assert.equal(await page.locator('#edit').isVisible(),phase==='edit');
       assert.equal(await page.locator('#next').isVisible(),phase==='edit');
       assert.equal(await page.locator('#guide button:not(.quiet):not(.secondary):visible').count(),1,`${name}: one primary action`);
-      if(phase==='edit')assert.equal(await page.locator('#next').isEnabled(),true,'any proposal may be compared');
+      if(phase==='edit')assert.equal(await page.locator('#next').isEnabled(),!state.checking,'any proposal may be compared');
       if(phase==='review')assert.equal(await page.locator('#keep').isDisabled(),true,'evidence is required');
     }
     if(state.error)assert.equal(await page.getByRole('alert').textContent(),state.error);
@@ -146,13 +147,13 @@ try{
     assert.equal(await page.locator('#proposal').isVisible(),false,'predict before revealing the suggestion');
     await page.locator('#prediction').fill('음수만 제외하면 합계는 30');await page.locator('#predict').click();
     assert.deepEqual((await events()).at(-1),{command:'predict',prediction:'음수만 제외하면 합계는 30'});
-    await update(step);assert.equal(await page.locator('#after').isVisible(),false);
+    await update(step);assert.equal(await page.locator('#after').isVisible(),true);
     await page.locator('#edit').click();assert.equal(await lastCommand(),'focus');
     const beforeIME=(await events()).length;
     await page.evaluate(mac=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',metaKey:mac,ctrlKey:!mac,altKey:true,isComposing:true,cancelable:true})),mac);
     assert.equal((await events()).length,beforeIME);
-    await page.keyboard.press((mac?'Meta':'Control')+'+Alt+Enter');assert.equal(await lastCommand(),'next');
-    await page.locator('#proposal summary').first().click();await page.locator('#original summary').click();
+    await page.keyboard.press((mac?'Meta':'Control')+'+Alt+Enter');assert.equal(await lastCommand(),'advance');
+    await page.locator('#original summary').click();
     await update({...step,status:'editing'});assert.equal(await page.locator('#proposal').evaluate(e=>e.open),true);
     assert.equal(await page.locator('#original').evaluate(e=>e.open),true);
     await page.locator('#next').click();await update(states.review);
@@ -171,6 +172,9 @@ try{
     await update(states.rejected);await page.locator('#again').click();assert.equal(await lastCommand(),'stop');await update({});
     assert.equal(await page.evaluate(()=>document.activeElement?.id),'intent');
     await update({error:'연결 오류'});assert.equal(await page.getByRole('alert').isVisible(),true);await update({});assert.equal(await page.getByRole('alert').isVisible(),false);
+    await update(states.review);await page.locator('#check-tools summary').click();
+    for(const command of ['runCheck','chooseCheck','problems','next']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await update({...step,checking:true,check:{task:'test',status:'running',sourceHash:'hash',durationMs:0,details:[]}});await page.locator('#cancel-check').click();assert.equal(await lastCommand(),'cancelCheck');
     assert.deepEqual([...new Set((await events()).map(event=>event.command).filter(command=>command!=='ready'))].sort(),[...PANEL_COMMANDS].sort(),'every production command was exercised');
     report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','proposal hidden until requested','edit action','compare without automatic acceptance','prediction before reveal','evidence-gated keep/reject','defer without evidence','out-of-range keep disabled','proposal and before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
   }

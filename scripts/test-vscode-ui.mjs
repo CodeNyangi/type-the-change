@@ -88,6 +88,10 @@ async function toggleFile(relative) {
 
 try {
   await mkdir(path.join(workspace, 'src', '한글 경로'), {recursive: true});
+  await mkdir(path.join(workspace,'scale'),{recursive:true});
+  const scaleSource=Array.from({length:200},(_,i)=>`export const value${i} = ${i};`).join('\n')+'\n';
+  for(let start=0;start<5000;start+=50)await Promise.all(Array.from({length:50},(_,i)=>writeFile(path.join(workspace,'scale',`module-${start+i}.ts`),scaleSource)));
+  report.scaleFixture={files:5000,linesPerFile:200,totalLines:1000000};
   await mkdir(path.join(profile, 'User'), {recursive: true});
   await mkdir(artifacts, {recursive: true});
   const first = 'src/first.ts', second = 'src/한글 경로/second.ts';
@@ -132,6 +136,7 @@ try {
   await view.locator('#files').click();
   await toggleFile(first);
   await toggleFile(second);
+  await toggleFile('scale/module-4999.ts');await toggleFile('scale/module-4999.ts');
   await page.locator('.quick-input-widget input[type="text"]').press('Enter');
   await textIs(view, '#files', '파일 2개');
   assert.ok((await view.locator('#files').getAttribute('title')).includes(second));
@@ -139,6 +144,7 @@ try {
   await page.locator('.quick-input-widget input[type="text"]').waitFor({state: 'visible'});
   await page.keyboard.press('Escape');
   await textIs(view, '#files', '파일 2개');
+  report.checks.push('One-million-line generated repository: a file beyond the initial 200 candidates is discoverable by name, without sending its contents to a model.');
   report.checks.push('Real Quick Pick selects files across folders and Korean paths; cancel preserves selection.');
   await page.screenshot({path: path.join(artifacts, 'home-files.png')});
 
@@ -151,7 +157,6 @@ try {
   assert.equal(await view.locator('#proposal').isVisible(), false);
   assert.equal(await view.locator('#keep').isVisible(), false);
   await predict(view, '첫 값은 2, 둘째 값은 20이 된다.');
-  await view.locator('#proposal > summary').click();
   await textIs(view, '#after', '2');
   assert.equal(await readFile(path.join(workspace, first), 'utf8'), firstBefore);
   await focusSource(view);await page.keyboard.type('2');await statusIs(view, 'matched');
@@ -159,7 +164,7 @@ try {
   report.checks.push('Prediction precedes proposal; native typing matches but does not approve.');
 
   await page.keyboard.press('Home');await page.keyboard.type('// ');await statusIs(view, 'outside');
-  await view.locator('#next').click();await view.locator('#evidence').fill('범위 밖에도 주석이 들어갔다.');
+  await command('Type the Change: Compare Without Running a Check');await view.locator('#evidence').fill('범위 밖에도 주석이 들어갔다.');
   assert.equal(await view.locator('#keep').isDisabled(), true);
   await view.locator('#file').click();
   await page.waitForFunction(() => Boolean(document.activeElement?.closest('.monaco-editor')));
@@ -170,15 +175,16 @@ try {
   report.checks.push('Outside edits remain comparable but cannot be kept; editing invalidates earlier evidence.');
 
   await page.keyboard.press('Control+Alt+Enter');
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'검사 없이 비교'}).waitFor({state:'visible'});await page.keyboard.press('Enter');
   await view.locator('#reflection').waitFor({state:'visible'});
   assert.equal(await view.locator('#keep').isDisabled(),true);
   await decide(view);
   await view.locator('#prediction-form').waitFor({state:'visible'});
   assert.equal(await view.locator('#proposal').isVisible(),false);
   await predict(view,'둘째 값이 20이 된다.');
-  await view.locator('#proposal > summary').click();await textIs(view,'#after','20');
+  await textIs(view,'#after','20');
   await focusSource(view);await page.keyboard.type('20');await statusIs(view,'matched');
-  await view.locator('#next').click();await decide(view);await statusIs(view,'complete');
+  await command('Type the Change: Compare Without Running a Check');await decide(view);await statusIs(view,'complete');
   assert.equal(await readFile(path.join(workspace,first),'utf8'),firstBefore);
   assert.equal(await readFile(path.join(workspace,second),'utf8'),secondBefore);
   await page.screenshot({path:path.join(artifacts,'complete.png')});
@@ -201,7 +207,7 @@ try {
   await page.screenshot({path:path.join(artifacts,'learning-first-look.png')});
   await predict(view,'[10, -5, 20]의 합계는 30이 되어야 한다.');
   await focusSource(view);await page.keyboard.type('      break;');await statusIs(view,'editing');
-  await view.locator('#next').click();await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
+  await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
   await until(async()=>(await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')),'The diff must show the actual alternative.');
   await decide(view,'reject','break도 반복을 끝내므로 뒤의 20을 놓친다.');await statusIs(view,'rejected');
   await page.screenshot({path:path.join(artifacts,'reject-alternative.png')});
@@ -209,7 +215,10 @@ try {
   assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')));
   await view.locator('#demo').click();await predict(view,'음수를 만나도 다음 값을 더한다.');
   await focusSource(view);await page.keyboard.type('      continue;');await statusIs(view,'matched');
-  await view.locator('#next').click();await decide(view,'keep','continue는 다음 반복으로 이동하여 10과 20을 더한다.');await statusIs(view,'complete');
+  await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=passed]').waitFor({state:'visible'});
+  assert.equal(await page.locator('.terminal-wrapper').first().isVisible(),false,'checks must not open or focus the terminal');
+  await view.locator('#evidence').fill('continue는 다음 반복으로 이동하여 10과 20을 더한다.');await page.keyboard.press('Control+Enter');
+  assert.equal(await view.evaluate(()=>document.activeElement?.id),'keep');await page.keyboard.press('Enter');await statusIs(view,'complete');
   await page.screenshot({path:path.join(artifacts,'learning-demo.png')});
   await view.locator('#end').click();await view.locator('#home').waitFor({state:'visible'});
   report.checks.push('Actual alternative is compared, rejected with evidence, and preserved; a fresh correct sample is kept with evidence.');

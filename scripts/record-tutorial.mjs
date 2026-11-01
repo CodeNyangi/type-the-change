@@ -18,7 +18,7 @@ const subtitle=text=>captions.push({start:(Date.now()-started)/1000,text});
 async function command(title){
   await page.keyboard.press('F1');const input=page.locator('.quick-input-widget input[type="text"]');
   await input.waitFor({state:'visible'});await input.fill('>'+title);
-  const row=page.locator('.quick-input-list .monaco-list-row').filter({hasText:title.includes(': ')?title.split(': ').slice(1).join(': '):title}).first();await row.waitFor({state:'visible'});await row.click();
+  const row=page.locator('.quick-input-list .monaco-list-row').filter({hasText:title.includes(': ')?title.split(': ').slice(1).join(': '):title}).first();await row.waitFor({state:'visible'});await page.keyboard.press('Enter');
 }
 async function panel(){
   const end=Date.now()+30000;
@@ -28,7 +28,7 @@ async function panel(){
 async function state(view,value){
   await view.waitForFunction(value=>document.querySelector('#status')?.dataset.state===value,value);
 }
-async function typeField(locator,text){await locator.click();await locator.fill(text);assert.equal(await locator.inputValue(),text);await pause(900);}
+async function typeField(locator,text){await locator.pressSequentially(text,{delay:30});assert.equal(await locator.inputValue(),text);await pause(500);}
 async function run(file,args){
   const child=spawn(file,args,{stdio:'inherit'});const [code]=await once(child,'exit');if(code!==0)throw Error(`${file} exited ${code}`);
 }
@@ -55,37 +55,38 @@ try{
   recorder=spawn('ffmpeg',['-y','-loglevel','error','-f','x11grab','-video_size','1440x1000','-framerate','24','-i',process.env.DISPLAY,'-an','-c:v','libx264','-preset','ultrafast','-crf','18',path.join(output,'capture.mp4')],{stdio:['pipe','inherit','inherit']});
   recordingFinished=once(recorder,'exit');started=Date.now();
   subtitle('AI 제안, 그대로 받아도 될까요?');await pause(2200);
-  await view.locator('#other summary').click();await view.locator('[data-command="import"]').click();await view.locator('#prediction').waitFor({state:'visible'});await pause(700);
-  subtitle('1. 제안을 보기 전에, 결과를 예상합니다.');
-  await typeField(view.locator('#prediction'),'음수를 빼면 10 + 20 = 30');await pause(1200);await view.locator('#predict').click();
-  await view.locator('#proposal > summary').click();await pause(2300);
+  await command('Type the Change: Open a Plan');await view.locator('#prediction').waitFor({state:'visible'});
+  await command('Type the Change: Next Action');
+  await view.waitForFunction(()=>document.activeElement?.id==='prediction');
+  subtitle('1. 결과를 예상하고 Ctrl+Enter. 코드로 이어집니다.');
+  await typeField(view.locator('#prediction'),'음수를 빼면 10 + 20 = 30');await page.keyboard.press('Control+Enter');
+  await page.waitForFunction(()=>Boolean(document.activeElement?.closest('.monaco-editor')));await pause(1600);
   assert.equal(await readFile(path.join(folder,'total.js'),'utf8'),await readFile('examples/judgment/total.js','utf8'));
-  subtitle('2. 일부러 틀린 연습용 제안: return → break');
-  await view.locator('#edit').click();await page.waitForFunction(()=>Boolean(document.activeElement?.closest('.monaco-editor')));
-  await page.keyboard.type('      break;',{delay:160});await state(view,'matched');await pause(1800);
-  subtitle('글자가 같아도, 동작이 맞는 것은 아닙니다.');
-  await page.keyboard.press('Control+s');await command('Terminal: Create New Terminal');
-  await page.locator('.terminal-wrapper').first().waitFor({state:'visible'});await pause(800);
-  await page.keyboard.type('node check.mjs',{delay:90});await page.keyboard.press('Enter');await pause(3200);
-  // The checker ran against an explicitly saved real editor buffer.
+  subtitle('일부러 틀린 연습용 제안: return → break');
+  await page.keyboard.type('      break;',{delay:110});await state(view,'matched');await pause(1300);
+  subtitle('2. Ctrl+Alt+Enter. 저장하고 검사합니다.');
+  await page.keyboard.press('Control+Alt+Enter');
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'합계 동작 검사'}).waitFor({state:'visible'});
+  subtitle('검사는 처음 한 번 선택합니다.');await pause(1400);await page.keyboard.press('Enter');
+  await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});
+  await view.waitForFunction(()=>document.activeElement?.id==='evidence');
+  assert.equal(await page.locator('.terminal-wrapper').first().isVisible(),false);
   assert.match(await readFile(path.join(folder,'total.js'),'utf8'),/break;/);
-  subtitle('기대 30, 실제 10. 뒤에 있는 20을 놓쳤습니다.');await pause(3000);
+  subtitle('기대 30, 실제 10. 결과가 코드 옆에 나타납니다.');await pause(2300);
   await page.screenshot({path:path.join(output,'counterexample.png')});
-  await command('View: Toggle Panel');await view.locator('#next').click();await view.locator('#evidence').waitFor({state:'visible'});
-  subtitle('3. 근거를 남기고, 제안을 거절합니다.');
-  await typeField(view.locator('#evidence'),'[10, -5, 20] → 10. break도 반복을 끝내서 20을 놓친다.');await pause(1400);
-  await view.locator('#reject').click();await state(view,'rejected');await pause(2300);
-  subtitle('거절은 판단 기록입니다. 코드는 직접 고칩니다.');
-  await view.locator('#file').click();await page.waitForFunction(()=>Boolean(document.activeElement?.closest('.monaco-editor')));
-  // Focus lands at the end of the current replacement, preserving normal editor selection.
-  await page.keyboard.press('Shift+Home');await page.keyboard.type('continue;',{delay:130});await page.keyboard.press('Control+s');
-  await state(view,'editing');
-  subtitle('내 수정: continue. 같은 입력으로 다시 확인합니다.');
-  await command('View: Toggle Panel');await pause(600);await page.keyboard.type('node check.mjs',{delay:80});await page.keyboard.press('Enter');await pause(3000);
+  subtitle('3. 이유 한 줄. Ctrl+Enter → 방향키 → Enter로 거절.');
+  await typeField(view.locator('#evidence'),'break도 반복을 끝내서 뒤의 20을 놓친다.');
+  await page.keyboard.press('Control+Enter');await page.keyboard.press('ArrowRight');await pause(1000);await page.keyboard.press('Enter');await state(view,'rejected');await pause(1500);
+  subtitle('Ctrl+Alt+T로 코드에 돌아와 직접 고칩니다.');
+  await page.keyboard.press('Control+Alt+t');await page.waitForFunction(()=>Boolean(document.activeElement?.closest('.monaco-editor')));
+  await page.keyboard.press('Shift+Home');await page.keyboard.type('continue;',{delay:100});await state(view,'editing');
+  subtitle('같은 단축키로 다시 검사. 터미널 이동 없이.');
+  await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=passed]').waitFor({state:'visible'});
+  await view.waitForFunction(()=>document.activeElement?.id==='evidence');
   assert.match(await readFile(path.join(folder,'total.js'),'utf8'),/continue;/);
-  await command('View: Toggle Panel');await view.locator('#next').click();await view.locator('#evidence').waitFor({state:'visible'});
-  await typeField(view.locator('#evidence'),'같은 입력으로 30 확인. continue는 다음 반복으로 이동한다.');await view.locator('#keep').click();await state(view,'complete');
-  subtitle('제안과 달라도, 근거가 있으면 내 변경을 유지합니다.');await pause(3000);
+  await typeField(view.locator('#evidence'),'같은 입력으로 30. continue는 다음 반복으로 이동한다.');
+  await page.keyboard.press('Control+Enter');await pause(800);await page.keyboard.press('Enter');await state(view,'complete');
+  subtitle('검사는 자동으로, 채택은 내 판단으로.');await pause(2500);
   await page.screenshot({path:path.join(output,'poster.png')});
   const duration=(Date.now()-started)/1000;recorder.stdin.write('q');await recordingFinished;recorder=undefined;
   const srt=captions.map((c,i)=>`${i+1}\n${srtTime(c.start)} --> ${srtTime(captions[i+1]?.start??duration)}\n${c.text}\n`).join('\n');
@@ -95,6 +96,6 @@ try{
   await run('ffmpeg',['-y','-loglevel','error','-i',path.join(output,'type-the-change-quickstart.mp4'),'-vf','setpts=0.7*PTS,fps=6,scale=900:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse','-loop','0',path.join(output,'quickstart.gif')]);
   for(const [name,time] of [['caption-start',5],['caption-test',19],['caption-decision',37]])await run('ffmpeg',['-y','-loglevel','error','-ss',String(time),'-i',path.join(output,'type-the-change-quickstart.mp4'),'-frames:v','1',path.join(output,name+'.png')]);
   await rm(path.join(output,'capture.mp4'));
-  await writeFile(path.join(output,'recording.json'),JSON.stringify({success:true,durationSeconds:duration,environment:'Real VS Code 1.142.0, isolated Linux CI display',fixture:'examples/judgment',sourceCommit:process.env.GITHUB_SHA,limitations:['Deliberately wrong local exercise, not a live AI response.','One example input, not proof of general correctness or learning gain.','File dialog is substituted; all editing, comparison, terminal execution and decisions use real VS Code.','Silent video with burned-in Korean captions.']},null,2));
+  await writeFile(path.join(output,'recording.json'),JSON.stringify({success:true,durationSeconds:duration,environment:'Real VS Code 1.142.0, isolated Linux CI display',fixture:'examples/judgment',sourceCommit:process.env.GITHUB_SHA,limitations:['Deliberately wrong local exercise, not a live AI response.','One example input, not proof of general correctness or learning gain.','File dialog is substituted; all editing, task execution, comparison and decisions use real VS Code keyboard controls.','Silent video with burned-in Korean captions.']},null,2));
 }catch(error){if(page)await page.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}
 finally{if(recorder){recorder.stdin.write('q');await recordingFinished.catch(()=>{});}await app?.close().catch(()=>{});await rm(root,{recursive:true,force:true});}

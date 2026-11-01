@@ -73,7 +73,7 @@ test('prediction comes before revealing a proposal and requires one short note',
 });
 test('a match enables comparison, never automatic acceptance',()=>{
  const v=view();v.update({...step,status:'matched'});assert.equal(v.get('next').hidden,false);assert.equal(v.get('reflection').hidden,true);assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);
- v.get('next').click();assert.deepEqual(v.messages.at(-1),{command:'next'});assert.equal(v.messages.some(m=>m.command==='decide'),false);v.close();
+ v.get('next').click();assert.deepEqual(v.messages.at(-1),{command:'advance'});assert.equal(v.messages.some(m=>m.command==='decide'),false);v.close();
 });
 test('human decisions carry evidence and accept alternatives independently of equality',()=>{
  const v=view();v.update({...step,status:'editing',judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'one'}});
@@ -100,7 +100,7 @@ test('proposal disclosure persists while typing and resets on the next step or s
  v.get<HTMLDetailsElement>('proposal').open=true;v.update({});v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);v.close();
 });
 test('comparison shortcut works for alternative text and cannot submit a judgment',()=>{
- const v=view();v.update({...step,status:'editing'});v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'next');
+ const v=view();v.update({...step,status:'editing'});v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'advance');
  v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'proof'}});const count=v.messages.length;
  v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count);
  v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);windows.close();
@@ -132,4 +132,20 @@ test('error and connection recovery clear stale text',()=>{
 test('commands and accessible names stay within the CSP and host allowlist',()=>{
  const v=view();for(const b of v.document.querySelectorAll<HTMLButtonElement>('button')){assert.ok((b.getAttribute('aria-label')||b.textContent||'').trim()||['file','model'].includes(b.id),b.outerHTML);if(b.dataset.command)assert.ok(PANEL_COMMANDS.has(b.dataset.command),b.dataset.command);}
  const csp=v.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');assert.match(csp||'',/default-src 'none'/);assert.match(csp||'',/nonce-test-nonce/);assert.equal(v.document.querySelectorAll('[style]').length,0);v.close();
+});
+test('keyboard-only prediction, check and explicit decision never accept on a continuation shortcut',()=>{
+ const v=view();v.update({...step,judgment:{phase:'predict',prediction:'',evidence:''}});
+ v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusStep'}}));assert.equal(v.document.activeElement?.id,'prediction');
+ v.get<HTMLTextAreaElement>('prediction').value='결과 30';v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'predict',prediction:'결과 30'});
+ v.update(step);assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'advance'});
+ v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});v.get<HTMLTextAreaElement>('evidence').value='실제로 10이라 거절';v.get('evidence').dispatchEvent(new v.window.Event('input'));
+ const count=v.messages.length;v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.equal(v.document.activeElement?.id,'keep');assert.equal(v.messages.length,count);
+ v.get('keep').dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));assert.equal(v.document.activeElement?.id,'reject');v.get('reject').click();assert.equal(v.messages.at(-1).decision,'reject');v.close();
+});
+test('task results remain separate from judgment and checking disables duplicate actions',()=>{
+ const v=view();const check={task:'npm test',sourceHash:'hash',status:'running' as const,durationMs:0,details:[]};v.update({...step,checking:true,check});
+ assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('cancel-check').hidden,false);const count=v.messages.length;v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count);
+ v.update({...step,check:{...check,status:'passed',exitCode:0},judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});assert.equal(v.get<HTMLButtonElement>('keep').disabled,true,'passing a check does not write a reason or keep a change');assert.match(v.get('check-title').textContent!,/통과/);
+ v.update({...step,check:{...check,status:'stale'}});assert.match(v.get('check-title').textContent!,/다시 검사/);v.close();
 });

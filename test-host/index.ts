@@ -4,7 +4,7 @@ import {readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import type {Plan} from '../src/plan.js';
 
-interface SessionState {file:string;index:number;complete:boolean;status:string;judgment:{phase:string};replan:boolean}
+interface SessionState {file:string;index:number;complete:boolean;status:string;judgment:{phase:string};replan:boolean;check?:{status:string;exitCode?:number}}
 interface ExtensionApi {
   startPlan(plan:Plan,root:string):Promise<void>;
   next():Promise<void>;
@@ -316,7 +316,7 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     await typeCharacters('const amount = price;\nreturn amount;');
     assert.equal(api.getState()?.status,'matched');await acceptMatched(api);
     assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
-    assert.equal(sequence.document.getText(vscode.window.activeTextEditor!.selection),'return amount;','the second same-file replacement is selected without a mouse');
+    assert.equal(sequence.document.getText(vscode.window.visibleTextEditors.find(editor=>editor.document.uri.toString()===sequence.document.uri.toString())!.selection),'return amount;','the second same-file replacement is selected without a mouse');
     await typeCharacters('return Math.max(0, amount);');
     assert.equal(api.getState()?.status,'matched');await acceptMatched(api);assert.equal(api.getState()?.complete,true);
     assert.equal(await readFile(path.join(root,'native-sequence.ts'),'utf8'),sequenceOriginal);await api.stop();
@@ -367,12 +367,34 @@ async function testCommands(extension:vscode.Extension<ExtensionApi>){
   const contributes=extension.packageJSON.contributes as {commands:{command:string}[];keybindings:{command:string;key:string;mac?:string;when:string}[]};
   for(const {command}of contributes.commands)assert.ok(registered.has(command),`${command} is registered and available from the command palette`);
   for(const name of ['review','chooseFiles','chooseModel','usage'])assert.ok(contributes.commands.some(item=>item.command===`typeTheChange.${name}`),`${name} is declared for command-palette access`);
-  for(const command of ['typeTheChange.next','typeTheChange.focus']){
+  for(const command of ['typeTheChange.advance','typeTheChange.focus']){
     const shortcut=contributes.keybindings.find(binding=>binding.command===command);
     assert.ok(shortcut,`${command} has a keyboard binding`);
     assert.ok(shortcut.key&&shortcut.mac,`${command} supports both platform keyboard conventions`);
     assert.match(shortcut.when,/typeTheChange\.active/,'session shortcuts do not capture keys globally');
   }
+}
+
+async function testIntegratedChecks(api:ExtensionApi,root:string){
+  const unrelated=path.join(root,'unrelated.ts');await writeFile(unrelated,'export const untouched = 1;\n');
+  const other=await vscode.workspace.openTextDocument(unrelated);await replaceDocument(other,'export const untouched = 2;\n');
+  await vscode.commands.executeCommand('typeTheChange.demo');
+  const demo=vscode.window.visibleTextEditors.find(editor=>editor.document.fileName.endsWith(path.sep+'price.ts'))!.document;
+  await api.predict('The sum is 30 even when a negative occurs before the final price.');
+  await replaceDocument(demo,demo.getText().replace('return result;','break;'));
+  await vscode.commands.executeCommand('typeTheChange.runCheck');
+  assert.equal(api.getState()?.check?.status,'failed','real demo child process reports the wrong branch');
+  assert.equal(api.getState()?.check?.exitCode,1);assert.equal(api.getState()?.judgment.phase,'review');assert.equal(api.getState()?.complete,false);
+  assert.match(await readFile(demo.uri.fsPath,'utf8'),/break;/,'explicit Save and Check saves the reviewed buffer');
+  assert.equal(await readFile(unrelated,'utf8'),'export const untouched = 1;\n','unrelated dirty files are not saved');assert.equal(other.isDirty,true);
+  await replaceDocument(demo,demo.getText().replace('break;','continue;'));
+  assert.equal(api.getState()?.check?.status,'stale','a subsequent edit invalidates task evidence immediately');
+  await vscode.commands.executeCommand('typeTheChange.runCheck');
+  assert.equal(api.getState()?.check?.status,'passed');assert.equal(api.getState()?.complete,false,'a zero exit never keeps the proposal');
+  await api.decide({decision:'keep',evidence:'The saved continue branch passed the four concrete example inputs.'});
+  const journal=JSON.parse(await readFile(path.join(path.dirname(demo.uri.fsPath),'.type-the-change/review.json'),'utf8'));
+  assert.equal(journal.records.at(-1).check.exitCode,0);assert.equal(journal.records.at(-1).check.sourceHash,journal.records.at(-1).sourceHash);
+  await api.stop();
 }
 
 export async function run(){
@@ -419,5 +441,6 @@ export async function run(){
   const nativeTyping=await nativeTypingAvailable(root);
   if(nativeTyping)await testNativeTyping(api,root);
   await testDeletionAndPanel(api,root,nativeTyping);
-  console.log(`HOST TEST PASSED: deletion comparison, panel reopen, review diff, command registration, mismatch, prior-file divergence, stale operations, MCP status, no source writes. Native keyboard cases: ${nativeTyping?'PASSED':'SKIPPED (see HOST TEST SKIP; editor-edit fallback is not keyboard verification)'}.`);
+  await testIntegratedChecks(api,root);
+  console.log(`HOST TEST PASSED: real task failure/pass, explicit scoped saving, unrelated dirty-file preservation, stale task results, judgment journal, deletion comparison, panel reopen, review diff, command registration, mismatch, prior-file divergence, stale operations, MCP status. Native keyboard cases: ${nativeTyping?'PASSED':'SKIPPED (see HOST TEST SKIP; editor-edit fallback is not keyboard verification)'}.`);
 }

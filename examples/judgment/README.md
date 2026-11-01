@@ -5,7 +5,9 @@ No actual AI service generated it. It is also the fixture used in the usage vide
 
 Open this folder in VS Code, then run **Type the Change: Open a Plan** and choose
 `plan.json`. Predict what `total([10, -5, 20])` should return before revealing the
-proposal. Type a change yourself and save it when ready to run it:
+proposal. Type a change yourself. Press **Ctrl+Alt+Enter / ⌘⌥Enter** and choose
+**합계 동작 검사** the first time. The included VS Code task saves the reviewed
+file and runs the check without opening the terminal. You can also run it manually:
 
 ```sh
 node check.mjs
@@ -17,5 +19,5 @@ your reason for rejecting the proposal or keeping your own change. Rejecting
 records your judgment; it does not undo, save, or repair your code.
 
 The checker only exercises this one input. Try `[-5, 10, 20]`, `[]`, and other
-cases before drawing broader conclusions. The extension never runs this command
-on your behalf. The video uses an isolated tutorial folder and saves explicitly.
+cases before drawing broader conclusions. The extension runs the chosen task only after your explicit Save and Check action.
+The video uses an isolated tutorial folder and keyboard controls.

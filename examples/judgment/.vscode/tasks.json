@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [{
+    "label": "합계 동작 검사",
+    "type": "process",
+    "command": "node",
+    "args": ["check.mjs"],
+    "options": {"cwd": "${workspaceFolder}"},
+    "group": "test",
+    "problemMatcher": "$type-the-change"
+  }]
+}

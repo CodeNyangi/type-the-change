@@ -11,14 +11,17 @@ import {listModels,generatePlan,InferenceError} from './inference.js';
 import {GuidePanel,type PanelState} from './panel.js';
 import {readPlanFile} from './plan-file.js';
 import {newJudgment,predict,beginReview,decide,invalidateJudgment,type Judgment,type Decision} from './judgment.js';
+import {pickFiles} from './file-picker.js';
+import {TaskChecks,type CheckResult} from './task-checks.js';
 
-type ReviewRecord={step:number;file:string;prediction:string;evidence:string;decision:Decision;sourceHash:string;recordedAt:string};
-type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
+type ReviewRecord={step:number;file:string;prediction:string;evidence:string;decision:Decision;sourceHash:string;recordedAt:string;check?:CheckResult};
+type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;revision:number;check?:CheckResult;checking?:boolean;demoTask?:vscode.Task;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
 const USAGE='https://chatgpt.com/settings/usage';
 export function activate(context:vscode.ExtensionContext){
   let session:Session|undefined,busy=false,timer:NodeJS.Timeout|undefined,generationAbort:AbortController|undefined;
   let sessionEpoch=0;
   let statusWrite:Promise<void>=Promise.resolve();
+  const checks=new TaskChecks(context.workspaceState);
   const composer:{root?:string;files:string[];model?:string;modelName?:string;connected:boolean;phase:string;error:string;notice:string}={files:[],connected:false,phase:'',error:'',notice:''};
   const panel=new GuidePanel(message=>{void vscode.commands.executeCommand(`typeTheChange.${message.command}`,message.command==='generate'?message.intent:message);});
   const snapshots=new Map<string,string>();
@@ -89,7 +92,8 @@ export function activate(context:vscode.ExtensionContext){
     if(!unavailable&&invalidateJudgment(s.judgment,sourceHash(s))){s.complete=false;void vscode.commands.executeCommand('setContext','typeTheChange.active',true);}
     const complete=s.complete&&!unavailable&&s.judgment.phase==='done';
     const messages={untouched:'',editing:'제안과 다른 코드 · 직접 판단해 주세요.',matched:'글자는 같아요 · 근거를 확인해 주세요.',outside:'안내 범위 밖도 바뀌었어요. 유지하려면 새 수정안으로 확인하세요.'};
-    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan});
+    if(s.check&&s.check.status!=='running'&&s.check.sourceHash!==sourceHash(s))s.check={...s.check,status:'stale'};
+    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan,check:s.check,checking:!!s.checking});
     status.text=complete?'$(check) 판단 기록됨':`$(edit) ${s.index+1}/${s.plan.steps.length}`;
     status.tooltip='Type the Change';status.command='typeTheChange.start';
     clearDecorations();
@@ -126,7 +130,8 @@ export function activate(context:vscode.ExtensionContext){
     const first=plan.steps[0],{document,text}=await source(root,first.file);
     if(epoch!==sessionEpoch)return;
     for(const [file,snapshot]of files)if(documents.get(file)?.getText()!==snapshot)throw Error('수정안을 여는 동안 파일이 바뀌었어요. 다시 열어 주세요.');
-    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],originalFiles:new Map(files),expectedFiles:files,documents};session=current;
+    checks.cancel();
+    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],revision:0,originalFiles:new Map(files),expectedFiles:files,documents};session=current;
     await vscode.commands.executeCommand('setContext','typeTheChange.active',true);
     if(session!==current||epoch!==sessionEpoch)return;
     composer.error='';composer.notice='';render();await focus(true);
@@ -138,7 +143,38 @@ export function activate(context:vscode.ExtensionContext){
     const s=session;if(!await refreshSessionDocuments(s))return;render();if(s.complete)return;
     await review();
   }
-  async function makePrediction(value:unknown){if(session){predict(session.judgment,value);render();}}
+  async function makePrediction(value:unknown){if(session){predict(session.judgment,value);render();await focus();}}
+  async function advance(){
+    if(!session)return;
+    if(session.judgment.phase==='predict'||session.judgment.phase==='review'||session.judgment.phase==='done'){panel.focusStep();return;}
+    await runCheck();
+  }
+  async function chooseCheck(){const s=session;if(!s||s.checking)return;await checks.select(s.root,true,s.demoTask);}
+  async function runCheck(){
+    const s=session;if(!s||s.checking)return;
+    if(!s.judgment.prediction){panel.focusStep();return;}
+    s.checking=true;render();
+    try{
+      const task=await checks.select(s.root,false,s.demoTask);if(session!==s||!task)return;
+      if(task==='compare'){await review();if(session===s)panel.focusStep();return;}
+      if(!await refreshSessionDocuments(s))return;
+      // This action is explicitly labelled Save and Check. Save only the files
+      // in this review, never unrelated dirty work in another editor.
+      for(const document of s.documents.values()){
+        if(document.isDirty&&!await document.save())throw Error('저장하지 못했어요. 파일을 저장한 뒤 다시 검사하세요.');
+        if(session!==s)return;
+      }
+      if([...s.documents.values()].some(document=>document.isDirty))throw Error('저장 중 코드가 바뀌었어요. 다시 검사하세요.');
+      const hash=sourceHash(s),revision=s.revision;
+      const result=await checks.run(task,hash,()=>session!==s||s.revision!==revision||sourceHash(s)!==hash,result=>{if(session===s){s.check=result;render();}});
+      if(session!==s)return;
+      if(result.status==='passed'||result.status==='failed'){
+        result.details=[...s.documents.values()].flatMap(document=>vscode.languages.getDiagnostics(document.uri).filter(diagnostic=>diagnostic.severity===vscode.DiagnosticSeverity.Error).map(diagnostic=>`${path.basename(document.uri.fsPath)}:${diagnostic.range.start.line+1} ${diagnostic.message.slice(0,350)}`)).slice(0,5);
+      }
+      s.check=result;render();
+      if(['passed','failed','unknown'].includes(result.status)){await review();if(session===s)panel.focusStep();}
+    }finally{if(session===s){s.checking=false;render();}}
+  }
   async function makeDecision(value:{decision?:unknown;evidence?:unknown}){
     const s=session;if(!s||s.deciding)return;s.deciding=true;
     try{
@@ -146,7 +182,8 @@ export function activate(context:vscode.ExtensionContext){
       const inspection=inspectSession(s),hash=sourceHash(s);
       if(value?.decision==='keep'&&(inspection.status==='outside'||inspection.status==='untouched'))throw Error(inspection.status==='outside'?'범위 밖 변경은 새 수정안으로 확인해 주세요.':'유지할 변경이 없어요. 제안을 거절하거나 보류할 수 있어요.');
       const judgment={...s.judgment};decide(judgment,hash,value?.decision,value?.evidence);
-      const record:ReviewRecord={step:s.index+1,file:s.plan.steps[s.index].file,prediction:judgment.prediction,evidence:judgment.evidence,decision:judgment.decision!,sourceHash:hash,recordedAt:new Date().toISOString()};
+      if(s.checking)throw Error('검사가 끝난 뒤 판단해 주세요.');
+      const record:ReviewRecord={step:s.index+1,file:s.plan.steps[s.index].file,prediction:judgment.prediction,evidence:judgment.evidence,decision:judgment.decision!,sourceHash:hash,recordedAt:new Date().toISOString(),...(s.check?{check:s.check}:{})};
       const records=[...s.records,record].slice(-100);
       await writeBridgeFile(s.root,'review.json',{version:1,planHash:s.hash,records});
       if(session!==s)return;
@@ -162,11 +199,11 @@ export function activate(context:vscode.ExtensionContext){
         validatePlanAgainstFiles({...s.plan,steps:s.plan.steps.slice(index)},files);
         resolved=resolveStep(s.documents.get(step.file)!.getText(),step);
       }catch{s.replan=true;render();return;}
-      session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),deciding:false};render();await focus(true);
+      session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),check:undefined,deciding:false};render();await focus(true);panel.focusStep();
     }finally{s.deciding=false;}
   }
   async function stop(){
-    sessionEpoch++;generationAbort?.abort();if(session)saveStatus('idle');
+    sessionEpoch++;generationAbort?.abort();checks.cancel();if(session)saveStatus('idle');
     session=undefined;clearDecorations();composer.error='';composer.notice='';
     await vscode.commands.executeCommand('setContext','typeTheChange.active',false);
     status.text='$(edit) Type the Change';status.command='typeTheChange.start';
@@ -192,33 +229,13 @@ export function activate(context:vscode.ExtensionContext){
     const epoch=sessionEpoch,root=await rootFolder();if(!root||epoch!==sessionEpoch)return;
     ensureSelectedRoot(root);
     const folder=vscode.workspace.workspaceFolders?.find(item=>path.resolve(item.uri.fsPath)===path.resolve(root));
-    const previous=new Set(composer.root===root?composer.files:[]);
-    const excluded=new Set(['node_modules','.vscode-test']);
-    // No maxResults: every eligible path remains searchable. Leaving exclude
-    // undefined retains VS Code's normal configured exclusions.
-    const candidates=vscode.workspace.findFiles(new vscode.RelativePattern(root,'**/*')).then(uris=>{
-      const files=new Set<string>();
-      const include=(file:string)=>{
-        try{validateRelativePath(file);}catch{return;}
-        if(file.split('/').some(part=>excluded.has(part.toLowerCase())))return;
-        files.add(file);
-      };
-      for(const uri of uris){
-        if(uri.scheme!=='file')continue;
-        include(path.relative(root,uri.fsPath).split(path.sep).join('/'));
-      }
-      // Keep explicit selections visible even if search exclusions changed.
-      // Contents and filesystem boundaries are still revalidated on submit.
-      for(const file of previous)include(file);
-      return [...files].sort((a,b)=>a.localeCompare(b)).map(file=>({label:file,file,picked:previous.has(file)}));
-    });
-    const selected=await vscode.window.showQuickPick(candidates,{canPickMany:true,title:`파일 선택 · ${folder?.name||path.basename(root)}`,placeHolder:'파일 이름으로 검색 · 최대 8개'});
+    const selected=await pickFiles(root,composer.root===root?composer.files:[],folder?.name||path.basename(root));
     if(!selected||epoch!==sessionEpoch)return;
     if(selected.length>8)throw Error('한 번에 파일 8개까지 선택하세요.');
     ensureSelectedRoot(root);
     const files:string[]=[];
-    for(const item of selected){
-      await source(root,item.file);if(epoch!==sessionEpoch)return;files.push(item.file);
+    for(const file of selected){
+      await source(root,file);if(epoch!==sessionEpoch)return;files.push(file);
     }
     ensureSelectedRoot(root);
     composer.root=root;composer.files=[...new Set(files)];composer.error='';render();
@@ -299,7 +316,10 @@ export function activate(context:vscode.ExtensionContext){
   async function demo(){
     local();const epoch=++sessionEpoch,root=await mkdtemp(path.join(tmpdir(),'type-the-change-'));if(epoch!==sessionEpoch)return;
     const code=await readFile(context.asAbsolutePath('examples/price.ts'),'utf8'),plan=parsePlan(await readFile(context.asAbsolutePath('examples/plan.json'),'utf8'));
-    if(epoch!==sessionEpoch)return;await writeFile(path.join(root,'price.ts'),code,{flag:'wx'});await startPlan(plan,root,epoch);
+    if(epoch!==sessionEpoch)return;await writeFile(path.join(root,'price.ts'),code,{flag:'wx'});
+    await writeFile(path.join(root,'check.mjs'),await readFile(context.asAbsolutePath('examples/check.mjs'),'utf8'),{flag:'wx'});
+    await startPlan(plan,root,epoch);
+    if(session?.root===root){session.demoTask=new vscode.Task({type:'type-the-change-demo'},vscode.TaskScope.Workspace,'음수 합계 검사','Type the Change',new vscode.ProcessExecution(process.execPath,[path.join(root,'check.mjs')],{cwd:root,env:{ELECTRON_RUN_AS_NODE:'1'}}),['$type-the-change']);render();}
   }
   async function mcpConfig(){
     const root=await rootFolder();if(!root)return;
@@ -350,11 +370,11 @@ export function activate(context:vscode.ExtensionContext){
   const commands:Record<string,(arg?:any)=>unknown>={
     start:openHome,generate,chooseFiles:()=>{if(!busy)return chooseFiles();},chooseModel,signIn:connect,
     signOut:async()=>{sessionEpoch++;generationAbort?.abort();try{await auth.signOut();}finally{composer.connected=false;render();}},
-    import:importPlan,loadPending:()=>loadPending(),next,focus:()=>focus(),stop,demo,mcpConfig,usage,review,
+    import:importPlan,loadPending:()=>loadPending(),next,advance,runCheck,chooseCheck,cancelCheck:()=>checks.cancel(),problems:()=>vscode.commands.executeCommand('workbench.actions.view.problems'),focus:()=>focus(),stop,demo,mcpConfig,usage,review,
     predict:arg=>makePrediction(arg?.prediction),decide:makeDecision,
   };
   for(const [name,action]of Object.entries(commands))context.subscriptions.push(vscode.commands.registerCommand(`typeTheChange.${name}`,(arg?:unknown)=>guard(()=>action(arg))));
-  context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event=>{if(session&&bindDocument(session,event.document)){clearTimeout(timer);timer=setTimeout(render,250);}}));
+  context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event=>{if(session&&bindDocument(session,event.document)){if(!event.contentChanges||event.contentChanges.length){session.revision++;if(session.check&&session.check.status!=='running')session.check={...session.check,status:'stale'};}clearTimeout(timer);timer=setTimeout(render,250);}}));
   context.subscriptions.push(vscode.workspace.onDidOpenTextDocument(document=>{if(session&&bindDocument(session,document))render();}));
   context.subscriptions.push(vscode.workspace.onDidCloseTextDocument(document=>{
     if(!session||![...session.documents.values()].some(current=>current.uri.toString()===document.uri.toString()))return;
@@ -376,7 +396,7 @@ export function activate(context:vscode.ExtensionContext){
     },300));
   };
   watcher.onDidCreate(notice);watcher.onDidChange(notice);
-  context.subscriptions.push(watcher,panel,status,decoration,{dispose(){generationAbort?.abort();clearTimeout(timer);for(const timer of noticeTimers.values())clearTimeout(timer);}});
-  return {startPlan,next,stop,predict:makePrediction,decide:makeDecision,getState:()=>session?{file:session.plan.steps[session.index].file,index:session.index,complete:session.complete&&![...session.documents.values()].some(document=>document.isClosed)&&session.judgment.reviewedHash===sourceHash(session),status:inspectSession(session).status,judgment:{...session.judgment},replan:!!session.replan}:null};
+  context.subscriptions.push(watcher,panel,status,decoration,checks,{dispose(){generationAbort?.abort();clearTimeout(timer);for(const timer of noticeTimers.values())clearTimeout(timer);}});
+  return {startPlan,next,stop,predict:makePrediction,decide:makeDecision,getState:()=>session?{file:session.plan.steps[session.index].file,index:session.index,complete:session.complete&&![...session.documents.values()].some(document=>document.isClosed)&&session.judgment.reviewedHash===sourceHash(session),status:inspectSession(session).status,judgment:{...session.judgment},replan:!!session.replan,check:session.check?{...session.check}:undefined,checking:!!session.checking}:null};
 }
 export function deactivate(){}
