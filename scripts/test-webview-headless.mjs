@@ -24,13 +24,22 @@ const themes={
   light:{foreground:'#333','editor-background':'#fff',descriptionForeground:'#666','input-background':'#fff','input-foreground':'#222','input-placeholderForeground':'#767676','input-border':'#aaa','button-background':'#0067b8','button-foreground':'#fff','button-hoverBackground':'#087bcc','textCodeBlock-background':'#f3f3f3','testing-iconPassed':'#38743a','editorWarning-foreground':'#855f00',errorForeground:'#a1260d',focusBorder:'#005fb8','widget-border':'#d4d4d4'},
   contrast:{foreground:'#fff','editor-background':'#000',descriptionForeground:'#fff','input-background':'#000','input-foreground':'#fff','input-placeholderForeground':'#a6a6a6','input-border':'#fff','button-background':'#000','button-foreground':'#fff','button-hoverBackground':'#0f4a85','button-border':'#fff',contrastBorder:'#6fc3df','textCodeBlock-background':'#000','testing-iconPassed':'#89bc83','editorWarning-foreground':'#ffcc00',errorForeground:'#f48771',focusBorder:'#f38518','widget-border':'#6fc3df'},
 };
-const step={title:'음수 가격을 합계에서 제외',file:'src/가격 계산.ts',line:3,before:'    result += price;',after:'    if (price >= 0) {\n      result += price;\n    }',reason:'0 이상의 가격만 합계에 포함하는지 조건을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false};
+const judgment={phase:'edit',prediction:'음수만 제외하고 다음 가격을 더한다.',evidence:''};
+const reviewed={...judgment,phase:'review',reviewedHash:'reviewed-buffer'};
+const done={...reviewed,phase:'done',decision:'keep',evidence:'[10, -5, 20] → 30 확인.'};
+const step={judgment,canKeep:true,title:'음수 가격을 합계에서 제외',file:'src/가격 계산.ts',line:3,before:'    result += price;',after:'    if (price >= 0) {\n      result += price;\n    }',reason:'0 이상의 가격만 합계에 포함하는지 조건을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false};
 const longStep={...step,title:'이해하기 어려웠던 코드의 동작을 한 줄씩 살펴보며 변경합니다',file:'src/아주 긴 한글 경로/중첩된 구성 요소/가격계산과예외처리를확인하는파일이름.ts',after:'const 결과 = 상품목록.filter(상품 => 상품.price >= 0).map(상품 => ({ ...상품, 합계: 상품.price * 상품.quantity }));\nreturn 결과;',reason:'긴 경로와 코드는 화면 밖으로 밀려나지 않아야 합니다. 제안 코드는 가로로 이동해 끝까지 읽을 수 있습니다.'};
 const states={
   empty:{},
   connected:{connected:true,files:['src/가격 계산.ts','tests/가격 계산.test.ts'],model:'첫 번째 요청 전에 고르는 모델'},
   busy:{busy:true,phase:'수정안을 만드는 중',files:['src/가격 계산.ts']},
   error:{error:'연결할 수 없어요. 다시 시도해 주세요. 오류가 반복되면 연결 상태를 확인해 주세요.'},
+  predict:{...step,judgment:{phase:'predict',prediction:'',evidence:''}},
+  review:{...step,judgment:reviewed},
+  rejected:{...step,judgment:{...done,decision:'reject'}},
+  deferred:{...step,judgment:{...done,decision:'defer',evidence:''}},
+  replan:{...step,replan:true,judgment:done},
+  'outside-review':{...step,status:'outside',canKeep:false,judgment:reviewed},
   long:longStep,
   proposal:longStep,
   editing:{...step,status:'editing',message:''},
@@ -38,7 +47,7 @@ const states={
   outside:{...longStep,status:'outside',message:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.'},
   delete:{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
   'delete-revealed':{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
-  complete:{...step,status:'matched',canContinue:true,complete:true,step:2},
+  complete:{...step,status:'matched',canContinue:true,complete:true,step:2,judgment:done},
 };
 const report={startedAt:new Date().toISOString(),mode:'Chromium headless with isolated browser context and mocked VS Code host',limits:['No native VS Code window or OS keyboard/IME was used.','Composition events verify the JavaScript guard, not real Korean input-method behavior.','No live account, provider request, or source-file edit was performed.','Representative theme tokens and accessibility checks are not a full WCAG or screen-reader certification.'],browser:'',matrix:[],interactionChecks:[],errors:[]};
 let browser,page;
@@ -62,15 +71,18 @@ try{
     assert.equal(await page.locator('#home').isVisible(),!active,`${name}: home`);
     assert.equal(await page.locator('#guide').isVisible(),active,`${name}: guide`);
     if(active){
-      const revealed=await page.locator('#proposal').evaluate(e=>e.open);
+      const phase=state.judgment?.phase||'predict';
+      const revealed=phase!=='predict'&&await page.locator('#proposal').evaluate(e=>e.open);
       assert.equal(await page.locator('#after').isVisible(),revealed&&state.after!=='',`${name}: proposed code`);
       assert.equal(await page.locator('#delete-hint').isVisible(),revealed&&state.after==='',`${name}: deletion hint`);
-      assert.equal(await page.locator('#review').isVisible(),true,`${name}: review access`);
-      const reviewing=!!state.complete||state.status==='outside';
-      assert.equal(await page.locator('#edit').isVisible(),!reviewing&&!state.canContinue,`${name}: edit action`);
-      assert.equal(await page.locator('#next').isVisible(),!reviewing&&!!state.canContinue,`${name}: continue action`);
-      assert.equal(await page.locator('#actions button:not(.quiet):visible').count(),1,`${name}: one primary action`);
-      if(!state.complete)assert.equal(await page.locator('#next').isEnabled(),!!state.canContinue,`${name}: next state`);
+      assert.equal(await page.locator('#prediction-form').isVisible(),phase==='predict');
+      assert.equal(await page.locator('#reflection').isVisible(),phase==='review');
+      assert.equal(await page.locator('#review').isVisible(),phase==='done');
+      assert.equal(await page.locator('#edit').isVisible(),phase==='edit');
+      assert.equal(await page.locator('#next').isVisible(),phase==='edit');
+      assert.equal(await page.locator('#guide button:not(.quiet):not(.secondary):visible').count(),1,`${name}: one primary action`);
+      if(phase==='edit')assert.equal(await page.locator('#next').isEnabled(),true,'any proposal may be compared');
+      if(phase==='review')assert.equal(await page.locator('#keep').isDisabled(),true,'evidence is required');
     }
     if(state.error)assert.equal(await page.getByRole('alert').textContent(),state.error);
   };
@@ -130,27 +142,37 @@ try{
     await update({connected:true});await page.getByRole('button',{name:'모델 선택',exact:true}).click();assert.equal(await lastCommand(),'chooseModel');
     await page.locator('#account-options summary').click();
     for(const command of ['usage','signOut']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
-    await update(step);await page.locator('#file').click();assert.equal(await lastCommand(),'focus');
-    assert.equal(await page.locator('#after').isVisible(),false,'proposal does not give away the change on first open');
+    await update(states.predict);await page.locator('#file').click();assert.equal(await lastCommand(),'focus');
+    assert.equal(await page.locator('#proposal').isVisible(),false,'predict before revealing the suggestion');
+    await page.locator('#prediction').fill('음수만 제외하면 합계는 30');await page.locator('#predict').click();
+    assert.deepEqual((await events()).at(-1),{command:'predict',prediction:'음수만 제외하면 합계는 30'});
+    await update(step);assert.equal(await page.locator('#after').isVisible(),false);
     await page.locator('#edit').click();assert.equal(await lastCommand(),'focus');
-    const blocked=(await events()).length;await page.keyboard.press((mac?'Meta':'Control')+'+Alt+Enter');assert.equal((await events()).length,blocked);
-    await page.locator('#proposal summary').first().click();assert.equal(await page.locator('#after').isVisible(),true);
-    await page.locator('#original summary').click();await update({...step,status:'editing',message:''});assert.equal(await page.locator('#original').evaluate(e=>e.open),true);
-    assert.equal(await page.locator('#proposal').evaluate(e=>e.open),true,'typing must not collapse an intentionally opened suggestion');
-    await update({...step,status:'matched',message:'제안과 일치',canContinue:true});
+    const beforeIME=(await events()).length;
     await page.evaluate(mac=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',metaKey:mac,ctrlKey:!mac,altKey:true,isComposing:true,cancelable:true})),mac);
-    assert.equal((await events()).length,blocked,'IME composition cannot approve a typing step');
+    assert.equal((await events()).length,beforeIME);
     await page.keyboard.press((mac?'Meta':'Control')+'+Alt+Enter');assert.equal(await lastCommand(),'next');
-    await page.locator('#next').click();await update({...step,status:'matched',canContinue:true,complete:true});
-    assert.equal(await page.evaluate(()=>document.activeElement?.id),'review','completion moves focus off the hidden next button');
+    await page.locator('#proposal summary').first().click();await page.locator('#original summary').click();
+    await update({...step,status:'editing'});assert.equal(await page.locator('#proposal').evaluate(e=>e.open),true);
+    assert.equal(await page.locator('#original').evaluate(e=>e.open),true);
+    await page.locator('#next').click();await update(states.review);
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'evidence');
+    assert.equal(await page.locator('#keep').isDisabled(),true);
+    assert.equal(await page.locator('#reject').isDisabled(),true);
+    await page.locator('#evidence').fill('테스트: 10 + 20 = 30');
+    assert.equal(await page.locator('#keep').isEnabled(),true);
+    await page.locator('#keep').click();assert.deepEqual((await events()).at(-1),{command:'decide',decision:'keep',evidence:'테스트: 10 + 20 = 30'});
+    await update(states.complete);assert.equal(await page.evaluate(()=>document.activeElement?.id),'review');
     await page.locator('#review').click();assert.equal(await lastCommand(),'review');
-    await update({...step,status:'outside',message:'다른 부분도 바뀌었어요.'});assert.equal(await page.locator('#review').isVisible(),true);assert.equal(await page.locator('#next').isEnabled(),false);
-    await page.locator('#review').focus();await update({...step,status:'matched',canContinue:true});assert.equal(await page.evaluate(()=>document.activeElement?.id),'review');
-    await update({...step,complete:true});await page.locator('#again').click();assert.equal(await lastCommand(),'stop');await update({});
+    await update(states['outside-review']);await page.locator('#evidence').fill('범위 밖의 변경 확인');
+    assert.equal(await page.locator('#keep').isDisabled(),true);
+    await page.locator('#reject').click();assert.equal((await events()).at(-1).decision,'reject');
+    await page.locator('#evidence').fill('');await page.locator('#defer').click();assert.deepEqual((await events()).at(-1),{command:'decide',decision:'defer',evidence:''});
+    await update(states.rejected);await page.locator('#again').click();assert.equal(await lastCommand(),'stop');await update({});
     assert.equal(await page.evaluate(()=>document.activeElement?.id),'intent');
     await update({error:'연결 오류'});assert.equal(await page.getByRole('alert').isVisible(),true);await update({});assert.equal(await page.getByRole('alert').isVisible(),false);
     assert.deepEqual([...new Set((await events()).map(event=>event.command).filter(command=>command!=='ready'))].sort(),[...PANEL_COMMANDS].sort(),'every production command was exercised');
-    report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','proposal hidden until requested','edit action','blocked and matched next','proposal and before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
+    report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','proposal hidden until requested','edit action','compare without automatic acceptance','prediction before reveal','evidence-gated keep/reject','defer without evidence','out-of-range keep disabled','proposal and before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
   }
   // Long code must remain accessible via keyboard scrolling at the narrowest width.
   await page.setViewportSize({width:300,height:900});await fresh();await update(longStep);

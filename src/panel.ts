@@ -3,7 +3,7 @@ import {randomBytes} from 'node:crypto';
 import {panelHtml, PANEL_COMMANDS, type PanelState} from './panel-view.js';
 export type {PanelState} from './panel-view.js';
 
-export interface PanelMessage {command:string;intent?:string}
+export interface PanelMessage {command:string;intent?:string;prediction?:string;evidence?:string;decision?:string}
 export class GuidePanel implements vscode.Disposable {
   private panel:vscode.WebviewPanel|undefined;
   private state:PanelState={};
@@ -19,7 +19,9 @@ export class GuidePanel implements vscode.Disposable {
       if(message?.command==='ready'){this.update(this.state);if(!this.state.file)this.focusIntent();}
       else if(typeof message?.command==='string'&&PANEL_COMMANDS.has(message.command)){
         if(message.command==='generate'&&(typeof message.intent!=='string'||!message.intent.trim()||message.intent.length>4000))return;
-        this.onCommand({command:message.command,...(message.command==='generate'?{intent:message.intent}:{})});
+        if(message.command==='predict'&&(typeof message.prediction!=='string'||!message.prediction.trim()||message.prediction.length>280))return;
+        if(message.command==='decide'&&(!['keep','reject','defer'].includes(message.decision)||typeof message.evidence!=='string'||message.evidence.length>280))return;
+        this.onCommand({command:message.command,...(message.command==='generate'?{intent:message.intent}:message.command==='predict'?{prediction:message.prediction}:message.command==='decide'?{decision:message.decision,evidence:message.evidence}:{})});
       }
     });
     this.panel.onDidDispose(()=>{this.panel=undefined;});

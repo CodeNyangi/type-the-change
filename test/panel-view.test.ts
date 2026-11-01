@@ -17,7 +17,7 @@ function view(mac=true,draft=''){
   function close(){assert.deepEqual(errors,[]);dom.window.close();}
   return {dom,window,document,get,update,click,type,messages,saved,close};
 }
-const step:PanelState={title:'값 변경',file:'price.ts',line:3,before:'old();',after:'new();',reason:'반환값을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false};
+const step:PanelState={title:'값 변경',file:'price.ts',line:3,before:'old();',after:'new();',reason:'반환값을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:true,canKeep:true,judgment:{phase:'edit',prediction:'반환값이 달라진다',evidence:''}};
 
 test('start has one inline request, saved draft, and no model/login modal',()=>{
  const v=view(true,'이전 요청');assert.deepEqual(v.messages,[{command:'ready'}]);assert.equal(v.get<HTMLTextAreaElement>('intent').value,'이전 요청');
@@ -65,90 +65,71 @@ test('a newly connected account can choose its model before the first request',(
  v.update({connected:true,model:'모델 A'});assert.equal(v.get('model').textContent,'모델 A');
  v.update({connected:false});assert.equal(v.get('model').hidden,true);v.close();
 });
-test('typing, matching, continuation, completion and next request stay in one guide',()=>{
- const v=view();v.update(step);assert.equal(v.get('guide').hidden,false);assert.equal(v.get('home').hidden,true);assert.equal(v.get('after').textContent,'new();');
- assert.equal(v.get('status').textContent,'','the edit action replaces a repeated instruction');
- assert.equal(v.get('edit').hidden,false);v.click('focus');assert.equal(v.messages.at(-1).command,'focus');
- assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('next').hidden,true);
- v.update({...step,status:'editing',message:''});assert.equal(v.get('status').textContent,'','the initial instruction clears when typing begins');
- v.update({...step,status:'matched',message:'제안과 일치',canContinue:true});v.click('next');assert.equal(v.messages.at(-1).command,'next');
- assert.equal(v.get('edit').hidden,true);assert.equal(v.get('next').hidden,false);
- v.update({...step,step:2});assert.equal(v.get('next-label').textContent,'입력 마치기');
- v.update({...step,step:2,complete:true,canContinue:true});assert.equal(v.get('next').hidden,true);assert.equal(v.get('review').hidden,false);assert.equal(v.get('guide').hidden,false);
- v.click('review');assert.equal(v.messages.at(-1).command,'review');v.click('stop');assert.equal(v.messages.at(-1).command,'stop');
- v.update({});assert.equal(v.get('home').hidden,false);v.close();
+test('prediction comes before revealing a proposal and requires one short note',()=>{
+ const v=view();v.update({...step,judgment:{phase:'predict',prediction:'',evidence:''}});
+ assert.equal(v.get('prediction-form').hidden,false);assert.equal(v.get('proposal').hidden,true);assert.equal(v.get<HTMLButtonElement>('predict').disabled,true);
+ v.get<HTMLTextAreaElement>('prediction').value='  결과 30  ';v.get('prediction').dispatchEvent(new v.window.Event('input'));
+ v.get('prediction-form').dispatchEvent(new v.window.Event('submit',{cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'predict',prediction:'결과 30'});v.close();
 });
-test('deletion has an explicit visual instruction on first open and reopening',()=>{
- const v=view();v.update({...step,after:'',message:''});assert.equal(v.get('after').hidden,true);assert.equal(v.get('delete-hint').hidden,false);assert.match(v.get('delete-hint').textContent||'',/지우세요/);assert.equal(v.get('status').textContent,'','deletion needs only its own instruction');
- v.update({});v.update({...step,after:'',message:''});assert.equal(v.get('delete-hint').hidden,false);v.close();
+test('a match enables comparison, never automatic acceptance',()=>{
+ const v=view();v.update({...step,status:'matched'});assert.equal(v.get('next').hidden,false);assert.equal(v.get('reflection').hidden,true);assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);
+ v.get('next').click();assert.deepEqual(v.messages.at(-1),{command:'next'});assert.equal(v.messages.some(m=>m.command==='decide'),false);v.close();
 });
-test('outside changes disable advancement and completion can be invalidated',()=>{
- const v=view();v.update({...step,complete:true,canContinue:true});
- v.update({...step,status:'outside',message:'다른 부분도 바뀌었어요.',canContinue:false,complete:false});
- assert.equal(v.get('review').hidden,false);assert.equal(v.get('next').hidden,true);assert.equal(v.get('edit').hidden,true);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('status').dataset.state,'outside');
- v.click('review');assert.equal(v.messages.at(-1).command,'review','the comparison is reachable from the blocked state');
- v.get('review').focus();v.update({...step,canContinue:true,status:'matched'});
- assert.equal(v.get('review').hidden,false);assert.equal(v.document.activeElement?.id,'review','comparison stays available without moving keyboard focus');v.close();
+test('human decisions carry evidence and accept alternatives independently of equality',()=>{
+ const v=view();v.update({...step,status:'editing',judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'one'}});
+ assert.equal(v.get('reflection').hidden,false);assert.equal(v.get<HTMLButtonElement>('keep').disabled,true);assert.equal(v.get<HTMLButtonElement>('reject').disabled,true);
+ v.get('defer').click();assert.deepEqual(v.messages.at(-1),{command:'decide',decision:'defer',evidence:''});
+ v.get<HTMLTextAreaElement>('evidence').value='  다른 구현도 두 입력에서 30  ';v.get('evidence').dispatchEvent(new v.window.Event('input'));
+ for(const decision of ['keep','reject']){v.get(decision).click();assert.deepEqual(v.messages.at(-1),{command:'decide',decision,evidence:'다른 구현도 두 입력에서 30'});}
+ v.update({...step,canKeep:false,status:'outside',judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'two'}});
+ assert.equal(v.get<HTMLTextAreaElement>('evidence').value,'','a different reviewed snapshot clears old evidence');assert.equal(v.get<HTMLButtonElement>('keep').disabled,true);v.close();
 });
-test('preview fixture and theme messages never replace the current host state',()=>{
- const v=view();v.update({...step,canContinue:true,status:'matched'});
- for(const data of [{type:'theme',name:'light'},{type:'fixture',name:'outside'},{type:'unknown'}]){
-  v.window.dispatchEvent(new v.window.MessageEvent('message',{data}));
-  assert.equal(v.get('home').hidden,true);assert.equal(v.get('guide').hidden,false);
-  assert.equal(v.get('after').textContent,step.after);assert.equal(v.get<HTMLButtonElement>('next').disabled,false);
- }
- v.update({});v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusIntent'}}));
- assert.equal(v.document.activeElement?.id,'intent','the real focus control message is still handled');v.close();
+test('complete, rejected and deferred outcomes remain visibly distinct',()=>{
+ const v=view();for(const [decision,label] of [['keep','내 변경 유지'],['reject','제안 거절'],['defer','보류']] as const){
+ v.update({...step,complete:decision==='keep',judgment:{phase:'done',prediction:'30',evidence:'확인한 입력',decision}});
+ assert.match(v.get('status').textContent||'',new RegExp(label));assert.equal(v.get('review').hidden,false);assert.equal(v.get('again').hidden,false);assert.equal(v.get('record').hidden,false);
+ }v.close();
 });
-test('location, edit action and shortcut route to the existing host commands',()=>{
- const v=view();v.update({...step,canContinue:true});v.click('focus');assert.equal(v.messages.at(-1).command,'focus');
- v.update(step);v.get('edit').click();assert.equal(v.messages.at(-1).command,'focus');v.update({...step,canContinue:true});
- v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'next');
- v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);assert.doesNotMatch(windows.get('next').textContent||'',/⌘/);windows.close();
+test('deletion remains explicit when the optional proposal is opened',()=>{
+ const v=view();v.update({...step,after:''});assert.equal(v.get('after').hidden,true);assert.equal(v.get('delete-hint').hidden,false);assert.match(v.get('delete-hint').textContent||'',/지우세요/);v.close();
 });
-test('before-code disclosure persists during typing and resets for a new step',()=>{
- const v=view();v.update(step);assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);
- v.get<HTMLDetailsElement>('proposal').open=true;v.get<HTMLDetailsElement>('original').open=true;
+test('proposal disclosure persists while typing and resets on the next step or session',()=>{
+ const v=view();v.update(step);v.get<HTMLDetailsElement>('proposal').open=true;v.get<HTMLDetailsElement>('original').open=true;
  v.update({...step,status:'editing'});assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);assert.equal(v.get<HTMLDetailsElement>('original').open,true);
  v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);assert.equal(v.get<HTMLDetailsElement>('original').open,false);
- v.get<HTMLDetailsElement>('proposal').open=true;v.update({});v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false,'the same plan reopened after ending starts with the proposal closed');v.close();
+ v.get<HTMLDetailsElement>('proposal').open=true;v.update({});v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);v.close();
 });
-test('each guide state has one primary action while comparison is always available',()=>{
- const v=view();
- for(const [state,primary] of [[step,'edit'],[{...step,status:'editing'},'edit'],[{...step,status:'matched',canContinue:true},'next'],[{...step,status:'outside'},'review'],[{...step,complete:true,canContinue:true},'review']] as const){
-  v.update(state);const actions=[...v.get('actions').querySelectorAll('button')].filter(b=>!b.hidden&&!b.classList.contains('quiet'));
-  assert.deepEqual(actions.map(b=>b.id),[primary]);v.get('review').click();assert.equal(v.messages.at(-1).command,'review');
- }
- assert.equal(v.get<HTMLProgressElement>('progress').value,2);assert.equal(v.get('progress').getAttribute('aria-valuetext'),'2 / 2');v.close();
+test('comparison shortcut works for alternative text and cannot submit a judgment',()=>{
+ const v=view();v.update({...step,status:'editing'});v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'next');
+ v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'proof'}});const count=v.messages.length;
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count);
+ v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);windows.close();
 });
-test('changing the primary action preserves keyboard focus without approving a step',()=>{
- const v=view();v.update(step);v.get('edit').focus();const count=v.messages.length;
- v.update({...step,status:'matched',canContinue:true});assert.equal(v.document.activeElement?.id,'next');
- v.update({...step,status:'editing',canContinue:false});assert.equal(v.document.activeElement?.id,'edit');
- v.update({...step,status:'outside'});assert.equal(v.document.activeElement?.id,'review');
- assert.equal(v.messages.length,count,'host updates cannot accept or edit code');v.close();
-});
-test('a new step does not leave keyboard focus inside its collapsed proposal',()=>{
- const v=view();v.update(step);v.get<HTMLDetailsElement>('proposal').open=true;
- v.get('original').querySelector('summary')!.focus();
- v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);assert.equal(v.document.activeElement?.id,'edit');v.close();
-});
-test('untrusted code, intent, filenames and errors are rendered as text',()=>{
- const v=view();const hostile='<img src=x onerror="window.hacked=true">';v.update({...step,title:hostile,file:hostile,after:hostile,reason:hostile,error:hostile,notice:hostile});
- assert.equal(v.document.querySelectorAll('img').length,0);assert.equal(v.get('after').textContent,hostile);assert.equal(v.get('error').textContent,hostile);assert.equal((v.window as any).hacked,undefined);v.close();
-});
-test('completion and ending move webview focus to a visible control',()=>{
- const v=view();v.update({...step,canContinue:true});v.get('next').focus();assert.equal(v.document.hasFocus(),true);
- v.update({...step,complete:true,canContinue:true});assert.equal(v.document.activeElement?.id,'review');
+test('phase changes keep keyboard focus on visible controls',()=>{
+ const v=view();v.update(step);v.get('next').focus();
+ v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'a'}});assert.equal(v.document.activeElement?.id,'evidence');
+ v.get('defer').focus();v.update({...step,judgment:{phase:'done',prediction:'30',evidence:'',decision:'defer'}});assert.equal(v.document.activeElement?.id,'review');
  v.update({});assert.equal(v.document.activeElement?.id,'intent');v.close();
 });
-test('error, recovery, connection and empty fields have no stale text',()=>{
- const v=view();v.update({error:'연결 오류',notice:'첫 연결',connected:true});assert.equal(v.get('error').hidden,false);assert.equal(v.get('notice').hidden,false);
- v.update({});assert.equal(v.get('error').hidden,true);assert.equal(v.get('notice').hidden,true);assert.equal(v.get('connect').hidden,false);assert.equal(v.get('account-options').hidden,true);v.close();
+test('one primary action per phase keeps the next action clear',()=>{
+ const v=view();for(const [phase,id] of [['predict','predict'],['edit','next'],['review','keep'],['done','review']] as const){
+ v.update({...step,judgment:{phase,prediction:'30',evidence:'proof',decision:phase==='done'?'keep':undefined}});
+ const actions=[...v.get('guide').querySelectorAll<HTMLButtonElement>('button')].filter(b=>!b.closest('[hidden]')&&!b.classList.contains('quiet')&&!b.classList.contains('secondary'));
+ assert.deepEqual(actions.map(b=>b.id),[id]);}v.close();
 });
-test('every rendered command has a host allowlist entry and every button has an accessible name',()=>{
+test('new steps do not leave focus inside a collapsed proposal',()=>{
+ const v=view();v.update(step);v.get<HTMLDetailsElement>('proposal').open=true;v.get('original').querySelector('summary')!.focus();
+ v.update({...step,step:2,judgment:{phase:'predict',prediction:'',evidence:''}});assert.equal(v.document.activeElement?.id,'prediction');v.close();
+});
+test('theme messages and untrusted source or notes cannot replace state or inject markup',()=>{
+ const v=view();const hostile='<img src=x onerror="window.hacked=true">';v.update({...step,title:hostile,file:hostile,after:hostile,reason:hostile,error:hostile,judgment:{phase:'done',prediction:hostile,evidence:hostile,decision:'reject'}});
+ for(const type of ['theme','fixture','unknown'])v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type}}));
+ assert.equal(v.get('guide').hidden,false);assert.equal(v.document.querySelectorAll('img').length,0);assert.equal(v.get('after').textContent,hostile);assert.equal((v.window as any).hacked,undefined);v.close();
+});
+test('error and connection recovery clear stale text',()=>{
+ const v=view();v.update({error:'연결 오류',notice:'첫 연결',connected:true});assert.equal(v.get('error').hidden,false);v.update({});assert.equal(v.get('error').hidden,true);assert.equal(v.get('notice').hidden,true);assert.equal(v.get('connect').hidden,false);v.close();
+});
+test('commands and accessible names stay within the CSP and host allowlist',()=>{
  const v=view();for(const b of v.document.querySelectorAll<HTMLButtonElement>('button')){assert.ok((b.getAttribute('aria-label')||b.textContent||'').trim()||['file','model'].includes(b.id),b.outerHTML);if(b.dataset.command)assert.ok(PANEL_COMMANDS.has(b.dataset.command),b.dataset.command);}
- const csp=v.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');assert.match(csp||'',/default-src 'none'/);assert.match(csp||'',/nonce-test-nonce/);
- assert.equal(v.document.querySelectorAll('[style]').length,0,'inline style attributes would be blocked by the production nonce-only policy');
- assert.equal(v.get('after').getAttribute('aria-label'),'제안 코드');v.close();
+ const csp=v.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');assert.match(csp||'',/default-src 'none'/);assert.match(csp||'',/nonce-test-nonce/);assert.equal(v.document.querySelectorAll('[style]').length,0);v.close();
 });

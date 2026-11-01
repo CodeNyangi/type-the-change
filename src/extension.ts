@@ -10,20 +10,21 @@ import {createAccountLock} from './account-lock.js';
 import {listModels,generatePlan,InferenceError} from './inference.js';
 import {GuidePanel,type PanelState} from './panel.js';
 import {readPlanFile} from './plan-file.js';
+import {newJudgment,predict,beginReview,decide,invalidateJudgment,type Judgment,type Decision} from './judgment.js';
 
-type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
+type ReviewRecord={step:number;file:string;prediction:string;evidence:string;decision:Decision;sourceHash:string;recordedAt:string};
+type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
 const USAGE='https://chatgpt.com/settings/usage';
 export function activate(context:vscode.ExtensionContext){
   let session:Session|undefined,busy=false,timer:NodeJS.Timeout|undefined,generationAbort:AbortController|undefined;
   let sessionEpoch=0;
   let statusWrite:Promise<void>=Promise.resolve();
   const composer:{root?:string;files:string[];model?:string;modelName?:string;connected:boolean;phase:string;error:string;notice:string}={files:[],connected:false,phase:'',error:'',notice:''};
-  const panel=new GuidePanel(message=>{void vscode.commands.executeCommand(`typeTheChange.${message.command}`,message.intent);});
+  const panel=new GuidePanel(message=>{void vscode.commands.executeCommand(`typeTheChange.${message.command}`,message.command==='generate'?message.intent:message);});
   const snapshots=new Map<string,string>();
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('type-the-change-before',{provideTextDocumentContent:uri=>snapshots.get(uri.toString())||''}));
   const status=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left,50);
   const decoration=vscode.window.createTextEditorDecorationType({backgroundColor:new vscode.ThemeColor('editor.wordHighlightBackground'),border:'1px solid',borderColor:new vscode.ThemeColor('editor.wordHighlightBorder'),rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed});
-  const difference=vscode.window.createTextEditorDecorationType({borderWidth:'0 0 2px 0',borderStyle:'solid',borderColor:new vscode.ThemeColor('editorWarning.foreground'),rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed});
   const auth=new ChatGPTAuth({secrets:context.secrets,appName:'Type the Change',lockAccount:createAccountLock(context.globalStorageUri.fsPath),openExternal:async url=>vscode.env.openExternal(vscode.Uri.parse(url))});
   status.command='typeTheChange.start';status.text='$(edit) Type the Change';status.show();
   function local(){if(!vscode.workspace.isTrusted)throw Error('신뢰한 폴더에서 시작해 주세요.');if(vscode.env.remoteName)throw Error('첫 버전은 로컬 VS Code 폴더에서 사용할 수 있어요.');}
@@ -47,7 +48,7 @@ export function activate(context:vscode.ExtensionContext){
     const text=document.getText();if(Buffer.byteLength(text)>MAX_SOURCE_BYTES)throw Error('파일이 너무 커요. 64 KiB 이하 파일을 골라 주세요.');
     return {document,text};
   }
-  function clearDecorations(){for(const editor of vscode.window.visibleTextEditors){editor.setDecorations(decoration,[]);editor.setDecorations(difference,[]);}}
+  function clearDecorations(){for(const editor of vscode.window.visibleTextEditors)editor.setDecorations(decoration,[]);}
   function bindDocument(s:Session,document:vscode.TextDocument){
     if(document.isClosed)return false;
     let relevant=false;
@@ -72,8 +73,11 @@ export function activate(context:vscode.ExtensionContext){
   function saveStatus(state:string){
     if(!session)return;
     const current=session;
-    const data={version:1,updatedAt:new Date().toISOString(),state,stepIndex:current.index,stepCount:current.plan.steps.length,planHash:current.hash};
+    const data={version:1,updatedAt:new Date().toISOString(),state,stepIndex:current.index,stepCount:current.plan.steps.length,planHash:current.hash,reviewPhase:current.judgment.phase,decision:current.judgment.decision??null};
     statusWrite=statusWrite.catch(()=>{}).then(()=>writeBridgeFile(current.root,'status.json',data)).catch(()=>{});
+  }
+  function sourceHash(s:Session){
+    const hash=createHash('sha256');for(const [file,document]of s.documents)hash.update(JSON.stringify([file,document.getText()]));return hash.digest('hex');
   }
   function render(){
     const common:PanelState={files:composer.files,model:composer.modelName,connected:composer.connected,busy,phase:composer.phase,error:composer.error,notice:composer.notice};
@@ -81,20 +85,21 @@ export function activate(context:vscode.ExtensionContext){
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);
     // Disposal temporarily removes comparison evidence. Keep the recorded
     // review until reopening establishes whether code actually changed.
-    if(s.complete&&inspection.status!=='matched'&&![...s.documents.values()].some(document=>document.isClosed)){s.complete=false;void vscode.commands.executeCommand('setContext','typeTheChange.active',true);}
-    const complete=s.complete&&inspection.status==='matched';
-    const messages={untouched:s.resolved.after===''?'':'선택된 코드를 직접 바꿔 보세요.',editing:'',matched:'제안과 일치',outside:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.'};
-    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:inspection.status==='matched',complete});
-    status.text=complete?'$(check) 직접 바꿈':`$(edit) ${s.index+1}/${s.plan.steps.length}${inspection.status==='matched'?' ✓':''}`;
+    const unavailable=[...s.documents.values()].some(document=>document.isClosed);
+    if(!unavailable&&invalidateJudgment(s.judgment,sourceHash(s))){s.complete=false;void vscode.commands.executeCommand('setContext','typeTheChange.active',true);}
+    const complete=s.complete&&!unavailable&&s.judgment.phase==='done';
+    const messages={untouched:'',editing:'제안과 다른 코드 · 직접 판단해 주세요.',matched:'글자는 같아요 · 근거를 확인해 주세요.',outside:'안내 범위 밖도 바뀌었어요. 유지하려면 새 수정안으로 확인하세요.'};
+    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan});
+    status.text=complete?'$(check) 판단 기록됨':`$(edit) ${s.index+1}/${s.plan.steps.length}`;
     status.tooltip='Type the Change';status.command='typeTheChange.start';
     clearDecorations();
     if(!s.complete&&inspection.status!=='outside')for(const editor of vscode.window.visibleTextEditors){
       if(editor.document.uri.toString()!==s.document.uri.toString())continue;
       const start=s.document.positionAt(s.resolved.start),end=s.document.positionAt(s.resolved.start+inspection.current.length);
       editor.setDecorations(decoration,[new vscode.Range(start,end)]);
-      if(inspection.status==='editing'&&inspection.firstDifference>=0){const offset=s.resolved.start+inspection.firstDifference;editor.setDecorations(difference,[new vscode.Range(s.document.positionAt(offset),s.document.positionAt(Math.min(offset+1,s.document.getText().length)))]);}
+      // Different text is a valid alternative, not a typing mistake to underline.
     }
-    saveStatus(complete?'complete':inspection.status==='untouched'||inspection.status==='editing'?'typing':inspection.status);
+    saveStatus(s.judgment.decision==='reject'?'rejected':s.judgment.decision==='defer'?'deferred':complete?'complete':inspection.status==='untouched'||inspection.status==='editing'?'typing':inspection.status);
   }
   async function focus(select=false){
     if(!session)return;
@@ -105,7 +110,7 @@ export function activate(context:vscode.ExtensionContext){
     const inspection=inspectSession(s);select=select||inspection.status==='untouched';
     if(inspection.status!=='outside'){
       const start=s.document.positionAt(s.resolved.start);
-      const end=s.document.positionAt(s.resolved.start+(select?s.resolved.before.length:(inspection.status==='matched'?inspection.current.length:Math.max(0,inspection.firstDifference))));
+      const end=s.document.positionAt(s.resolved.start+(select?s.resolved.before.length:inspection.current.length));
       editor.selection=select?new vscode.Selection(start,end):new vscode.Selection(end,end);
       editor.revealRange(new vscode.Range(start,end),vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
@@ -121,7 +126,7 @@ export function activate(context:vscode.ExtensionContext){
     const first=plan.steps[0],{document,text}=await source(root,first.file);
     if(epoch!==sessionEpoch)return;
     for(const [file,snapshot]of files)if(documents.get(file)?.getText()!==snapshot)throw Error('수정안을 여는 동안 파일이 바뀌었어요. 다시 열어 주세요.');
-    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,originalFiles:new Map(files),expectedFiles:files,documents};session=current;
+    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],originalFiles:new Map(files),expectedFiles:files,documents};session=current;
     await vscode.commands.executeCommand('setContext','typeTheChange.active',true);
     if(session!==current||epoch!==sessionEpoch)return;
     composer.error='';composer.notice='';render();await focus(true);
@@ -129,16 +134,36 @@ export function activate(context:vscode.ExtensionContext){
     if(session!==current||epoch!==sessionEpoch)return;panel.show(true);
   }
   async function next(){
-    if(!session||session.complete)return;
-    const current=session;
-    if(!await refreshSessionDocuments(current)||current.complete)return;
-    if(inspectSession(current).status!=='matched'){render();await focus();return;}
-    current.expectedFiles.set(current.plan.steps[current.index].file,current.document.getText());
-    if(current.index===current.plan.steps.length-1){current.complete=true;clearDecorations();render();await vscode.commands.executeCommand('setContext','typeTheChange.active',false);return;}
-    const index=current.index+1,step=current.plan.steps[index],{document,text}=await source(current.root,step.file);
-    if(session!==current||inspectSession(current).status!=='matched')return;
-    // Resolve first: a stale next step must never discard the current valid guidance.
-    const resolved=resolveStep(text,step);session={...current,index,document,resolved};render();await focus(true);
+    if(!session)return;
+    const s=session;if(!await refreshSessionDocuments(s))return;render();if(s.complete)return;
+    await review();
+  }
+  async function makePrediction(value:unknown){if(session){predict(session.judgment,value);render();}}
+  async function makeDecision(value:{decision?:unknown;evidence?:unknown}){
+    const s=session;if(!s||s.deciding)return;s.deciding=true;
+    try{
+      if(!await refreshSessionDocuments(s))return;
+      const inspection=inspectSession(s),hash=sourceHash(s);
+      if(value?.decision==='keep'&&(inspection.status==='outside'||inspection.status==='untouched'))throw Error(inspection.status==='outside'?'범위 밖 변경은 새 수정안으로 확인해 주세요.':'유지할 변경이 없어요. 제안을 거절하거나 보류할 수 있어요.');
+      const judgment={...s.judgment};decide(judgment,hash,value?.decision,value?.evidence);
+      const record:ReviewRecord={step:s.index+1,file:s.plan.steps[s.index].file,prediction:judgment.prediction,evidence:judgment.evidence,decision:judgment.decision!,sourceHash:hash,recordedAt:new Date().toISOString()};
+      const records=[...s.records,record].slice(-100);
+      await writeBridgeFile(s.root,'review.json',{version:1,planHash:s.hash,records});
+      if(session!==s)return;
+      s.records=records;s.judgment=judgment;
+      if([...s.documents.values()].some(document=>document.isClosed)||sourceHash(s)!==hash){render();return;}
+      if(record.decision!=='keep'){render();return;}
+      s.expectedFiles.set(record.file,s.document.getText());
+      if(s.index===s.plan.steps.length-1){s.complete=true;clearDecorations();render();await vscode.commands.executeCommand('setContext','typeTheChange.active',false);return;}
+      const index=s.index+1,step=s.plan.steps[index];
+      let resolved:ResolvedStep;
+      try{
+        const files=new Map([...s.documents].map(([file,document])=>[file,document.getText()]));
+        validatePlanAgainstFiles({...s.plan,steps:s.plan.steps.slice(index)},files);
+        resolved=resolveStep(s.documents.get(step.file)!.getText(),step);
+      }catch{s.replan=true;render();return;}
+      session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),deciding:false};render();await focus(true);
+    }finally{s.deciding=false;}
   }
   async function stop(){
     sessionEpoch++;generationAbort?.abort();if(session)saveStatus('idle');
@@ -287,11 +312,18 @@ export function activate(context:vscode.ExtensionContext){
   async function review(){
     if(!session)return;
     const s=session;
-    const file=s.originalFiles.size===1?s.plan.steps[s.index].file:await vscode.window.showQuickPick([...s.originalFiles.keys()],{title:'변경 확인'});
+    if(!s.judgment.prediction)throw Error('먼저 바뀔 결과를 한 줄로 예상해 보세요.');
+    if(!await refreshSessionDocuments(s))return;
+    const file=!s.complete||s.originalFiles.size===1?s.plan.steps[s.index].file:await vscode.window.showQuickPick([...s.originalFiles.keys()],{title:'변경 확인'});
     if(!file||session!==s)return;
-    const original=vscode.Uri.from({scheme:'type-the-change-before',path:`/${file}`,query:createHash('sha256').update(s.root).update(s.originalFiles.get(file)||'').digest('hex')});
-    snapshots.set(original.toString(),s.originalFiles.get(file)||'');
-    await vscode.commands.executeCommand('vscode.diff',original,vscode.Uri.file(path.join(s.root,file)),`${file} · 변경 전 ↔ 현재`,{preview:true});
+    const hash=sourceHash(s),before=(s.complete?s.originalFiles:s.expectedFiles).get(file)||'';
+    const original=vscode.Uri.from({scheme:'type-the-change-before',path:`/${file}`,query:createHash('sha256').update(s.root).update(before).digest('hex')});
+    snapshots.set(original.toString(),before);
+    await vscode.commands.executeCommand('vscode.diff',original,vscode.Uri.file(path.join(s.root,file)),`${file} · 변경 전 ↔ 현재`,{preview:true,viewColumn:vscode.ViewColumn.One});
+    if(session!==s)return;
+    if(sourceHash(s)!==hash){render();throw Error('비교하는 동안 코드가 바뀌었어요. 다시 확인해 주세요.');}
+    if(!s.complete){beginReview(s.judgment,hash);s.replan=false;}
+    render();panel.show(true);
   }
   async function guard(action:()=>unknown){
     try{composer.error='';await action();}
@@ -319,6 +351,7 @@ export function activate(context:vscode.ExtensionContext){
     start:openHome,generate,chooseFiles:()=>{if(!busy)return chooseFiles();},chooseModel,signIn:connect,
     signOut:async()=>{sessionEpoch++;generationAbort?.abort();try{await auth.signOut();}finally{composer.connected=false;render();}},
     import:importPlan,loadPending:()=>loadPending(),next,focus:()=>focus(),stop,demo,mcpConfig,usage,review,
+    predict:arg=>makePrediction(arg?.prediction),decide:makeDecision,
   };
   for(const [name,action]of Object.entries(commands))context.subscriptions.push(vscode.commands.registerCommand(`typeTheChange.${name}`,(arg?:unknown)=>guard(()=>action(arg))));
   context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event=>{if(session&&bindDocument(session,event.document)){clearTimeout(timer);timer=setTimeout(render,250);}}));
@@ -343,7 +376,7 @@ export function activate(context:vscode.ExtensionContext){
     },300));
   };
   watcher.onDidCreate(notice);watcher.onDidChange(notice);
-  context.subscriptions.push(watcher,panel,status,decoration,difference,{dispose(){generationAbort?.abort();clearTimeout(timer);for(const timer of noticeTimers.values())clearTimeout(timer);}});
-  return {startPlan,next,stop,getState:()=>session?{file:session.plan.steps[session.index].file,index:session.index,complete:session.complete&&inspectSession(session).status==='matched',status:inspectSession(session).status}:null};
+  context.subscriptions.push(watcher,panel,status,decoration,{dispose(){generationAbort?.abort();clearTimeout(timer);for(const timer of noticeTimers.values())clearTimeout(timer);}});
+  return {startPlan,next,stop,predict:makePrediction,decide:makeDecision,getState:()=>session?{file:session.plan.steps[session.index].file,index:session.index,complete:session.complete&&![...session.documents.values()].some(document=>document.isClosed)&&session.judgment.reviewedHash===sourceHash(session),status:inspectSession(session).status,judgment:{...session.judgment},replan:!!session.replan}:null};
 }
 export function deactivate(){}

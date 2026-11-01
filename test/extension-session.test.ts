@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRequire } from 'node:module';
-import { mkdtemp, readFile, rm, writeFile, link } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, link, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { build } from 'esbuild';
@@ -14,7 +14,7 @@ const bundled=await build({entryPoints:['src/extension.ts'],bundle:true,platform
 const loadExtension=new Function('require','module','exports',bundled.outputFiles[0].text);
 const realRequire=createRequire(import.meta.url);
 interface TestDocument {uri:{scheme:string;fsPath:string;toString():string};text:string;isClosed:boolean;getText():string;positionAt(offset:number):{line:number;character:number}}
-interface ExtensionApi {startPlan(plan:Plan,root:string):Promise<void>;next():Promise<void>;stop():Promise<void>;getState():{file:string;status:string;complete:boolean}|null}
+interface ExtensionApi {startPlan(plan:Plan,root:string):Promise<void>;next():Promise<void>;stop():Promise<void>;predict(value:unknown):Promise<void>;decide(value:{decision:string;evidence:string}):Promise<void>;getState():{file:string;status:string;complete:boolean;judgment:{phase:string};replan:boolean}|null}
 
 async function fixture(){
   const root=await mkdtemp(path.join(tmpdir(),'ttc-document-lifecycle-'));
@@ -45,7 +45,7 @@ async function fixture(){
     },
   };
   const vscode={
-    env:{remoteName:undefined},Uri:{file:uri},StatusBarAlignment:{Left:1},ViewColumn:{One:1,Two:2,Beside:-2},TextEditorRevealType:{InCenterIfOutsideViewport:1},
+    env:{remoteName:undefined},Uri:{file:uri,from:(value:{scheme:string;path:string;query:string})=>({toString:()=>value.scheme+':'+value.path+'?'+value.query})},StatusBarAlignment:{Left:1},ViewColumn:{One:1,Two:2,Beside:-2},TextEditorRevealType:{InCenterIfOutsideViewport:1},
     ThemeColor:class{constructor(readonly id:string){}},DecorationRangeBehavior:{ClosedClosed:1},
     Range:class{constructor(readonly start:unknown,readonly end:unknown){}},Selection:class{constructor(readonly start:unknown,readonly end:unknown){}},workspace,
     commands:{registerCommand(name:string,action:(...args:unknown[])=>unknown){commands.set(name,action);return disposable();},async executeCommand(name:string,...args:unknown[]){return commands.get(name)?.(...args);}},
@@ -68,7 +68,8 @@ async function fixture(){
   function closeDocument(document:TestDocument){document.isClosed=true;for(const handler of closed)handler(document);}
   const open=(file:string)=>workspace.openTextDocument(uri(path.join(root,file)));
   const run=async(name:string)=>{const command=commands.get(`typeTheChange.${name}`);assert.ok(command);await command();};
-  return {root,api,plan,beforeA,afterA,beforeB,afterB,open,edit,closeDocument,run,uiEvents,onShowSource(callback:()=>Promise<void>){beforeShowSource=callback;},async close(){
+  async function acceptMatch(){if(api.getState()?.complete)return;if(api.getState()?.judgment.phase==='predict')await api.predict('수정한 상수가 새 값으로 평가된다');await api.next();if(api.getState()?.status==='matched'&&!api.getState()?.complete)await api.decide({decision:'keep',evidence:'비교에서 상수의 값과 주변 코드 보존 확인'});}
+  return {root,api,acceptMatch,plan,beforeA,afterA,beforeB,afterB,open,edit,closeDocument,run,uiEvents,onShowSource(callback:()=>Promise<void>){beforeShowSource=callback;},async close(){
     await api.stop();for(const subscription of subscriptions)subscription.dispose();
     // Status snapshots already queued by render() finish asynchronously. Retry
     // only transient removal failures while those owned bridge files drain.
@@ -106,12 +107,12 @@ test('stopping while native source focus is pending cannot reveal stale guidance
 test('reopening a disposed prior document invalidates stale agreement',async()=>{
   const f=await fixture();
   try{
-    await f.api.startPlan(f.plan,f.root);const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.api.next();
+    await f.api.startPlan(f.plan,f.root);const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.acceptMatch();
     f.closeDocument(first);const reopened=await f.open('a.ts');assert.notEqual(reopened,first);
     f.edit(reopened,f.beforeA);const second=await f.open('b.ts');f.edit(second,f.afterB);
     assert.equal(f.api.getState()?.status,'outside','comparison must use the reopened prior file, not its disposed snapshot');
-    await f.api.next();assert.equal(f.api.getState()?.complete,false);
-    f.edit(reopened,f.afterA);await f.api.next();assert.equal(f.api.getState()?.complete,true);
+    await f.acceptMatch();assert.equal(f.api.getState()?.complete,false);
+    f.edit(reopened,f.afterA);await f.acceptMatch();assert.equal(f.api.getState()?.complete,true);
     assert.equal(await readFile(path.join(f.root,'b.ts'),'utf8'),f.beforeB);
   }finally{await f.close();}
 });
@@ -119,11 +120,11 @@ test('reopening a disposed prior document invalidates stale agreement',async()=>
 test('Next revalidates a closed prior file against disk before accepting completion',async()=>{
   const f=await fixture();
   try{
-    await f.api.startPlan(f.plan,f.root);const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.api.next();
+    await f.api.startPlan(f.plan,f.root);const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.acceptMatch();
     // Disk changes before the close event is delivered; the disposed object
     // still contains its previously accepted text and must not be trusted.
     await writeFile(path.join(f.root,'a.ts'),f.beforeA);f.closeDocument(first);
-    f.edit(await f.open('b.ts'),f.afterB);await f.api.next();
+    f.edit(await f.open('b.ts'),f.afterB);await f.acceptMatch();
     assert.equal(f.api.getState()?.complete,false,'a closed document cannot certify stale disk content');
     assert.equal(f.api.getState()?.status,'outside');assert.equal(await readFile(path.join(f.root,'a.ts'),'utf8'),f.beforeA);
   }finally{await f.close();}
@@ -132,12 +133,12 @@ test('Next revalidates a closed prior file against disk before accepting complet
 test('closing an unchanged document recovers guidance without a manual reopen',async()=>{
   const f=await fixture();
   try{
-    await f.api.startPlan(f.plan,f.root);const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.api.next();
+    await f.api.startPlan(f.plan,f.root);const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.acceptMatch();
     f.edit(await f.open('b.ts'),f.afterB);assert.equal(f.api.getState()?.status,'matched');f.closeDocument(first);
     const deadline=Date.now()+3000;
     while(f.api.getState()?.status!=='matched'&&Date.now()<deadline)await new Promise<void>(resolve=>setImmediate(resolve));
     assert.equal(f.api.getState()?.status,'matched','document disposal alone must not strand the disabled Next button');
-    await f.api.next();assert.equal(f.api.getState()?.complete,true);
+    await f.acceptMatch();assert.equal(f.api.getState()?.complete,true);
   }finally{await f.close();}
 });
 
@@ -145,7 +146,7 @@ test('reloading an unchanged completed document preserves its completed review',
   const f=await fixture();
   try{
     await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);
-    const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.api.next();
+    const first=await f.open('a.ts');f.edit(first,f.afterA);await writeFile(path.join(f.root,'a.ts'),f.afterA);await f.acceptMatch();
     assert.equal(f.api.getState()?.complete,true);f.closeDocument(first);
     const deadline=Date.now()+3000;
     while(f.api.getState()?.status!=='matched'&&Date.now()<deadline)await new Promise<void>(resolve=>setImmediate(resolve));
@@ -158,13 +159,13 @@ test('reopening changed code invalidates completion and restoring text requires 
   const f=await fixture();
   try{
     await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);
-    const first=await f.open('a.ts');f.edit(first,f.afterA);await f.api.next();assert.equal(f.api.getState()?.complete,true);
+    const first=await f.open('a.ts');f.edit(first,f.afterA);await f.acceptMatch();assert.equal(f.api.getState()?.complete,true);
     // The saved original differs from the completed dirty buffer.
     f.closeDocument(first);const reopened=await f.open('a.ts');
     assert.equal(f.api.getState()?.status,'untouched');assert.equal(f.api.getState()?.complete,false);
     f.edit(reopened,f.afterA);await f.run('focus');
     assert.equal(f.api.getState()?.status,'matched');assert.equal(f.api.getState()?.complete,false);
-    await f.api.next();assert.equal(f.api.getState()?.complete,true);
+    await f.acceptMatch();assert.equal(f.api.getState()?.complete,true);
   }finally{await f.close();}
 });
 
@@ -173,7 +174,7 @@ test('a reopened active document receives focus and tracks the new buffer',async
   try{
     await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);const first=await f.open('a.ts');f.closeDocument(first);
     const reopened=await f.open('a.ts');f.edit(reopened,f.afterA);
-    assert.equal(f.api.getState()?.status,'matched');await f.run('focus');await f.api.next();assert.equal(f.api.getState()?.complete,true);
+    assert.equal(f.api.getState()?.status,'matched');await f.run('focus');await f.acceptMatch();assert.equal(f.api.getState()?.complete,true);
     assert.equal(await readFile(path.join(f.root,'a.ts'),'utf8'),f.beforeA,'rebinding does not save human edits');
   }finally{await f.close();}
 });
@@ -197,7 +198,7 @@ test('a change ending exactly at the UTF-8 file limit remains completable withou
     const initial='x'.repeat(65_530)+'a',updated='x'.repeat(65_530)+'가나';
     await writeFile(path.join(f.root,'a.ts'),initial);
     await f.api.startPlan({...f.plan,steps:[{file:'a.ts',before:'a',after:'가나',reason:'Use the final label.'}]},f.root);
-    f.edit(await f.open('a.ts'),updated);await f.api.next();
+    f.edit(await f.open('a.ts'),updated);await f.acceptMatch();
     assert.equal(f.api.getState()?.complete,true);assert.equal(await readFile(path.join(f.root,'a.ts'),'utf8'),initial);
   }finally{await f.close();}
 });
@@ -211,4 +212,47 @@ test('an imported plan cannot replace valid guidance with conflicting aliases fo
     await assert.rejects(f.api.startPlan(aliased,f.root),{code:'duplicate_file'});
     assert.equal(f.api.getState()?.file,'b.ts');assert.equal(await readFile(path.join(f.root,'a.ts'),'utf8'),f.beforeA);
   }finally{await f.close();}
+});
+
+test('matching an AI proposal does not finish without prediction, comparison and evidence',async()=>{
+ const f=await fixture();try{
+  await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);f.edit(await f.open('a.ts'),f.afterA);
+  await assert.rejects(f.api.next(),/예상/);assert.equal(f.api.getState()?.complete,false);
+  await f.api.predict('a의 값이 2가 된다');await f.api.next();assert.equal(f.api.getState()?.complete,false);
+  await assert.rejects(f.api.decide({decision:'keep',evidence:''}),/한 줄/);
+  await f.api.decide({decision:'keep',evidence:'상수 선언과 다른 코드가 그대로인지 비교했다'});
+  assert.equal(f.api.getState()?.complete,true);
+  const journal=JSON.parse(await readFile(path.join(f.root,'.type-the-change/review.json'),'utf8'));
+  assert.equal(journal.records[0].prediction,'a의 값이 2가 된다');assert.equal(journal.records[0].decision,'keep');
+ }finally{await f.close();}
+});
+test('a human can keep a different implementation or reject an unchanged proposal',async()=>{
+ for(const alternative of [true,false]){const f=await fixture();try{
+  await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);await f.api.predict('필요한 값은 3이다');
+  if(alternative)f.edit(await f.open('a.ts'),'export const a = 3;\n');
+  await f.api.next();await f.api.decide({decision:alternative?'keep':'reject',evidence:'요구한 값은 3인데 제안은 2다'});
+  assert.equal(f.api.getState()?.complete,alternative);assert.equal(f.api.getState()?.status,alternative?'editing':'untouched');
+  assert.equal(await readFile(path.join(f.root,'a.ts'),'utf8'),f.beforeA,'no decision applies or saves source');
+ }finally{await f.close();}}
+});
+test('a stale comparison cannot certify subsequent edits',async()=>{
+ const f=await fixture();try{
+  await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);await f.api.predict('2');const document=await f.open('a.ts');f.edit(document,f.afterA);await f.api.next();
+  f.edit(document,'export const a = 3;\n');await assert.rejects(f.api.decide({decision:'keep',evidence:'old comparison'}),/다시 비교/);assert.equal(f.api.getState()?.complete,false);
+ }finally{await f.close();}
+});
+test('an alternative that invalidates the remaining plan is kept without guessing its next anchor',async()=>{
+ const f=await fixture();try{
+  const steps=[{file:'a.ts',before:'1',after:'2',reason:'first'},{file:'a.ts',before:'2',after:'4',reason:'second'}];
+  await f.api.startPlan({...f.plan,steps},f.root);await f.api.predict('최종적으로 3이면 충분하다');f.edit(await f.open('a.ts'),'export const a = 3;\n');await f.api.next();
+  await f.api.decide({decision:'keep',evidence:'다른 구현이 요구값 3을 제공한다'});assert.equal(f.api.getState()?.replan,true);assert.equal(f.api.getState()?.complete,false);
+  assert.equal((await f.open('a.ts')).getText(),'export const a = 3;\n');
+ }finally{await f.close();}
+});
+test('a failed journal write cannot claim that a decision was recorded',async()=>{
+ const f=await fixture();try{
+  await f.api.startPlan({...f.plan,steps:[f.plan.steps[0]]},f.root);await f.api.predict('2');f.edit(await f.open('a.ts'),f.afterA);await f.api.next();
+  await mkdir(path.join(f.root,'.type-the-change/review.json'),{recursive:true});
+  await assert.rejects(f.api.decide({decision:'keep',evidence:'checked'}));assert.equal(f.api.getState()?.judgment.phase,'review');assert.equal(f.api.getState()?.complete,false);
+ }finally{await f.close();}
 });

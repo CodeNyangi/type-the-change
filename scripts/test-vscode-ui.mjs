@@ -67,6 +67,17 @@ async function focusSource(frame) {
   await page.waitForFunction(() => Boolean(document.activeElement?.closest('.monaco-editor')));
 }
 
+async function predict(view, text='다음 값으로 바꾸면 기대한 결과가 나온다.') {
+  await view.locator('#prediction').fill(text);
+  await view.locator('#predict').click();
+  await view.locator('#next').waitFor({state:'visible'});
+}
+async function decide(view, decision='keep', evidence='실제 변경 내역에서 기대한 값을 확인했다.') {
+  await view.locator('#reflection').waitFor({state:'visible'});
+  await view.locator('#evidence').fill(evidence);
+  await view.locator('#'+decision).click();
+}
+
 async function toggleFile(relative) {
   const input = page.locator('.quick-input-widget input[type="text"]');
   await input.fill(relative);
@@ -137,42 +148,41 @@ try {
   await view.locator('#other summary').click();
   await view.locator('[data-command="import"]').click();
   await view.locator('#guide').waitFor({state: 'visible'});
-  assert.equal(await view.locator('#after').isVisible(), false);
-  assert.equal(await view.locator('#edit').isVisible(), true);
+  assert.equal(await view.locator('#proposal').isVisible(), false);
+  assert.equal(await view.locator('#keep').isVisible(), false);
+  await predict(view, '첫 값은 2, 둘째 값은 20이 된다.');
   await view.locator('#proposal > summary').click();
   await textIs(view, '#after', '2');
-  assert.equal(await view.locator('#next').isDisabled(), true);
   assert.equal(await readFile(path.join(workspace, first), 'utf8'), firstBefore);
-  await focusSource(view);
-  await page.keyboard.type('2');
-  await statusIs(view, 'matched');
-  report.checks.push('JSON import opens a real guide without editing source; native keyboard typing matches the first step.');
+  await focusSource(view);await page.keyboard.type('2');await statusIs(view, 'matched');
+  assert.equal(await view.locator('#keep').isVisible(), false);
+  report.checks.push('Prediction precedes proposal; native typing matches but does not approve.');
 
+  await page.keyboard.press('Home');await page.keyboard.type('// ');await statusIs(view, 'outside');
+  await view.locator('#next').click();await view.locator('#evidence').fill('범위 밖에도 주석이 들어갔다.');
+  assert.equal(await view.locator('#keep').isDisabled(), true);
+  await view.locator('#file').click();
+  await page.waitForFunction(() => Boolean(document.activeElement?.closest('.monaco-editor')));
   await page.keyboard.press('Home');
-  await page.keyboard.type('// ');
-  await statusIs(view, 'outside');
-  assert.equal(await view.locator('#next').isDisabled(), true);
-  assert.equal(await view.locator('#review').isVisible(), true);
-  await page.keyboard.press('Home');
-  await page.keyboard.press('Delete');
-  await page.keyboard.press('Delete');
-  await page.keyboard.press('Delete');
+  for(let i=0;i<3;i++)await page.keyboard.press('Delete');
   await statusIs(view, 'matched');
-  report.checks.push('Out-of-range edits block Next and expose review; restoring the buffer re-enables progress.');
+  await view.locator('#next').waitFor({state:'visible'});
+  report.checks.push('Outside edits remain comparable but cannot be kept; editing invalidates earlier evidence.');
 
   await page.keyboard.press('Control+Alt+Enter');
-  await until(async () => !(await view.locator('#proposal').evaluate(e => e.open)), 'The next step must start with its proposal closed.');
-  await view.locator('#proposal > summary').click();
-  await textIs(view, '#after', '20');
-  await focusSource(view);
-  await page.keyboard.type('20');
-  await statusIs(view, 'matched');
-  await view.locator('#next').click();
-  await statusIs(view, 'complete');
-  assert.equal(await readFile(path.join(workspace, first), 'utf8'), firstBefore);
-  assert.equal(await readFile(path.join(workspace, second), 'utf8'), secondBefore);
-  await page.screenshot({path: path.join(artifacts, 'complete.png')});
-  report.checks.push('Real editor shortcut advances; second file typing completes; source files are not automatically saved.');
+  await view.locator('#reflection').waitFor({state:'visible'});
+  assert.equal(await view.locator('#keep').isDisabled(),true);
+  await decide(view);
+  await view.locator('#prediction-form').waitFor({state:'visible'});
+  assert.equal(await view.locator('#proposal').isVisible(),false);
+  await predict(view,'둘째 값이 20이 된다.');
+  await view.locator('#proposal > summary').click();await textIs(view,'#after','20');
+  await focusSource(view);await page.keyboard.type('20');await statusIs(view,'matched');
+  await view.locator('#next').click();await decide(view);await statusIs(view,'complete');
+  assert.equal(await readFile(path.join(workspace,first),'utf8'),firstBefore);
+  assert.equal(await readFile(path.join(workspace,second),'utf8'),secondBefore);
+  await page.screenshot({path:path.join(artifacts,'complete.png')});
+  report.checks.push('Compare shortcut requires a human decision; evidence advances to a fresh prediction; nothing auto-saves.');
 
   await view.locator('#review').click();
   const reviewChoice = page.locator('.quick-input-list .monaco-list-row').filter({hasText: first}).first();
@@ -187,32 +197,22 @@ try {
   assert.equal(await view.locator('#intent').inputValue(), '음수 가격을 제외해 주세요');
   report.checks.push('New request returns to the composer and preserves its draft.');
 
-  await view.locator('#demo').click();
-  await view.locator('#guide').waitFor({state: 'visible'});
-  await view.locator('#file').waitFor({state: 'visible'});
-  assert.equal(await view.locator('#after').isVisible(), false);
-  await page.screenshot({path: path.join(artifacts, 'learning-first-look.png')});
-  await focusSource(view);
-  await page.keyboard.type('      break;');
-  await statusIs(view, 'editing');
-  assert.equal(await view.locator('#review').isVisible(), true, 'a different implementation can still be reviewed');
-  await view.locator('#review').click();
-  await page.locator('.monaco-diff-editor').first().waitFor({state: 'visible'});
-  await until(async () => (await page.locator('.monaco-diff-editor').allTextContents()).some(text => text.includes('break;')), 'The diff must show the actual alternative edit.');
-  await view.locator('#end').click();
-  await view.locator('#home').waitFor({state: 'visible'});
-  assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(text => text.includes('break;')), 'ending guidance preserves the alternative edit');
-  await view.locator('#demo').click();
-  await view.locator('#guide').waitFor({state: 'visible'});
-  await focusSource(view);
-  await page.keyboard.type('      continue;');
-  await statusIs(view, 'matched');
-  await view.locator('#next').click();
-  await statusIs(view, 'complete');
-  await page.screenshot({path: path.join(artifacts, 'learning-demo.png')});
-  await view.locator('#end').click();
-  await view.locator('#home').waitFor({state: 'visible'});
-  report.checks.push('The demo hides the answer, permits review of an alternative, preserves that edit after ending, and accepts native typing of continue in a fresh sample.');
+  await view.locator('#demo').click();await view.locator('#guide').waitFor({state:'visible'});
+  await page.screenshot({path:path.join(artifacts,'learning-first-look.png')});
+  await predict(view,'[10, -5, 20]의 합계는 30이 되어야 한다.');
+  await focusSource(view);await page.keyboard.type('      break;');await statusIs(view,'editing');
+  await view.locator('#next').click();await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
+  await until(async()=>(await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')),'The diff must show the actual alternative.');
+  await decide(view,'reject','break도 반복을 끝내므로 뒤의 20을 놓친다.');await statusIs(view,'rejected');
+  await page.screenshot({path:path.join(artifacts,'reject-alternative.png')});
+  await view.locator('#end').click();await view.locator('#home').waitFor({state:'visible'});
+  assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')));
+  await view.locator('#demo').click();await predict(view,'음수를 만나도 다음 값을 더한다.');
+  await focusSource(view);await page.keyboard.type('      continue;');await statusIs(view,'matched');
+  await view.locator('#next').click();await decide(view,'keep','continue는 다음 반복으로 이동하여 10과 20을 더한다.');await statusIs(view,'complete');
+  await page.screenshot({path:path.join(artifacts,'learning-demo.png')});
+  await view.locator('#end').click();await view.locator('#home').waitFor({state:'visible'});
+  report.checks.push('Actual alternative is compared, rejected with evidence, and preserved; a fresh correct sample is kept with evidence.');
 
   await mkdir(path.join(workspace, '.type-the-change'), {recursive: true});
   await writeFile(path.join(workspace, '.type-the-change/plan.json'), JSON.stringify({

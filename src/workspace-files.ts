@@ -6,7 +6,7 @@ import { MAX_SOURCE_BYTES, validateRelativePath } from './plan.js';
 
 export { MAX_SOURCE_BYTES } from './plan.js';
 export const MAX_BRIDGE_BYTES = 256 * 1024;
-export type BridgeName = 'plan.json' | 'status.json';
+export type BridgeName = 'plan.json' | 'status.json' | 'review.json';
 
 export class WorkspaceFileError extends Error {
   constructor(readonly code: 'unsafe_path' | 'missing_file' | 'not_regular_file' | 'too_large' | 'invalid_text' | 'duplicate_file' | 'unavailable') {
@@ -117,7 +117,7 @@ export async function assertDistinctWorkspaceFiles(root: string, files: Iterable
 }
 
 function checkBridgeName(name: string): asserts name is BridgeName {
-  if (name !== 'plan.json' && name !== 'status.json') throw new WorkspaceFileError('unsafe_path');
+  if (name !== 'plan.json' && name !== 'status.json' && name !== 'review.json') throw new WorkspaceFileError('unsafe_path');
 }
 
 export async function readBridgeFile(root: string, name: BridgeName): Promise<unknown | undefined> {

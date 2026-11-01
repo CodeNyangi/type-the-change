@@ -4,12 +4,23 @@ import {readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
 import type {Plan} from '../src/plan.js';
 
-interface SessionState {file:string;index:number;complete:boolean;status:string}
+interface SessionState {file:string;index:number;complete:boolean;status:string;judgment:{phase:string};replan:boolean}
 interface ExtensionApi {
   startPlan(plan:Plan,root:string):Promise<void>;
   next():Promise<void>;
+  predict(value:string):Promise<void>;
+  decide(value:{decision:string;evidence:string}):Promise<void>;
   stop():Promise<void>;
   getState():SessionState|null;
+}
+
+async function compare(api:ExtensionApi){
+  if(api.getState()?.judgment.phase==='predict')await api.predict('The changed branch returns the expected test value.');
+  await api.next();
+}
+async function acceptMatched(api:ExtensionApi){
+  await compare(api);
+  if(api.getState()?.status==='matched'&&!api.getState()?.complete)await api.decide({decision:'keep',evidence:'Host-test fixture: inspected the exact expected buffer.'});
 }
 
 async function replaceDocument(document:vscode.TextDocument,text:string){
@@ -41,7 +52,7 @@ async function testMultipleFiles(api:ExtensionApi,root:string){
   const first=await vscode.workspace.openTextDocument(vscode.Uri.file(firstFile));
   const second=await vscode.workspace.openTextDocument(vscode.Uri.file(secondFile));
   assert.equal(first.getText(),firstBefore);assert.equal(second.getText(),secondBefore);
-  await replaceDocument(first,firstAfter);await api.next();
+  await replaceDocument(first,firstAfter);await acceptMatched(api);
   assert.equal(api.getState()?.index,1,'the accepted first step advances to the second file');
   await replaceDocument(second,secondAfter);
   assert.equal(api.getState()?.status,'matched');
@@ -49,18 +60,18 @@ async function testMultipleFiles(api:ExtensionApi,root:string){
   // Undo an already accepted edit while the last file itself still matches.
   await replaceDocument(first,firstBefore);
   assert.equal(api.getState()?.status,'outside','a prior file is still part of the comparison');
-  await api.next();assert.equal(api.getState()?.complete,false,'a matching current file cannot hide a reverted earlier edit');
+  await acceptMatched(api);assert.equal(api.getState()?.complete,false,'a matching current file cannot hide a reverted earlier edit');
   assert.equal(api.getState()?.index,1);
   await waitForStatus(root,'outside');
   await replaceDocument(first,firstAfter);
-  assert.equal(api.getState()?.status,'matched');await api.next();
+  assert.equal(api.getState()?.status,'matched');await acceptMatched(api);
   assert.equal(api.getState()?.complete,true);await waitForStatus(root,'complete');
 
   // A completed session must also notice a later change in a different file.
   await replaceDocument(first,'// changed after review\n'+firstAfter);
   assert.equal(api.getState()?.complete,false,'completion is not an immutable claim about later file content');
   assert.equal(api.getState()?.status,'outside');await waitForStatus(root,'outside');
-  await replaceDocument(first,firstAfter);await api.next();
+  await replaceDocument(first,firstAfter);await acceptMatched(api);
   assert.equal(api.getState()?.complete,true,'restoring both files permits deliberate acceptance again');
   assert.equal(await readFile(firstFile,'utf8'),firstBefore,'reviewing never saves the first buffer');
   assert.equal(await readFile(secondFile,'utf8'),secondBefore,'reviewing never saves the second buffer');
@@ -93,6 +104,7 @@ async function testAsyncSessionChanges(api:ExtensionApi,root:string){
   const first=await vscode.workspace.openTextDocument(vscode.Uri.file(firstFile));
   await replaceDocument(first,firstAfter);
   assert.equal(api.getState()?.status,'matched');
+  await api.predict('The first value becomes 2.');
   const pendingNext=api.next();
   await api.stop();await pendingNext;
   assert.equal(api.getState(),null,'a pending next-file read cannot recreate a stopped session');
@@ -111,7 +123,7 @@ async function testAsyncSessionChanges(api:ExtensionApi,root:string){
   await replaceDocument(second,secondAfter);
   await replaceDocument(first,firstAfter);
   assert.equal(api.getState()?.status,'outside','editing a future file pauses acceptance of the current step');
-  await api.next();assert.equal(api.getState()?.index,0);
+  await acceptMatched(api);assert.equal(api.getState()?.index,0);
   await replaceDocument(second,secondBefore);
 
   // A target disappearing between preflight and Next cannot discard the valid guide.
@@ -122,8 +134,9 @@ async function testAsyncSessionChanges(api:ExtensionApi,root:string){
   await writeFile(secondFile,secondBefore);
 
   // A double click must not skip over the next typing step.
-  await Promise.all([api.next(),api.next()]);
-  assert.equal(api.getState()?.index,1,'concurrent Next requests advance only once');
+  await compare(api);
+  await Promise.all([api.decide({decision:'keep',evidence:'Concurrent decision fixture.'}),api.decide({decision:'keep',evidence:'Concurrent decision fixture.'})]);
+  assert.equal(api.getState()?.index,1,'concurrent decisions advance only once');
   assert.equal(api.getState()?.status,'untouched');
   assert.equal(api.getState()?.complete,false);
   await api.stop();
@@ -144,7 +157,7 @@ async function testHiddenPriorFileChanges(api:ExtensionApi,root:string){
     {file:'hidden-second.ts',before:secondBefore,after:secondAfter,reason:'Update the second value.'},
   ]},root);
   const first=await vscode.workspace.openTextDocument(vscode.Uri.file(firstFile));
-  await replaceDocument(first,firstAfter);await first.save();await api.next();
+  await replaceDocument(first,firstAfter);await first.save();await acceptMatched(api);
   const firstTab=vscode.window.tabGroups.all.flatMap(group=>group.tabs).find(tab=>tab.input instanceof vscode.TabInputText&&tab.input.uri.fsPath===firstFile);
   assert.ok(firstTab,'the accepted source has a tab to close');
   await vscode.window.tabGroups.close(firstTab,true);
@@ -156,8 +169,8 @@ async function testHiddenPriorFileChanges(api:ExtensionApi,root:string){
   const second=await vscode.workspace.openTextDocument(vscode.Uri.file(secondFile));
   await replaceDocument(second,secondAfter);
   assert.equal(api.getState()?.status,'outside','a hidden prior file cannot be ignored when accepting the final step');
-  await api.next();assert.equal(api.getState()?.complete,false);
-  await replaceDocument(reopened,firstAfter);await api.next();
+  await acceptMatched(api);assert.equal(api.getState()?.complete,false);
+  await replaceDocument(reopened,firstAfter);await acceptMatched(api);
   assert.equal(api.getState()?.complete,true,'restoring the hidden file permits review again');
   assert.equal(await readFile(firstFile,'utf8'),firstBefore,'review does not save the restored buffer');
   assert.equal(await readFile(secondFile,'utf8'),secondBefore,'review does not save the second buffer');
@@ -180,7 +193,7 @@ async function testNewRequestFromCommandPalette(api:ExtensionApi,root:string){
   assert.equal(await readFile(file,'utf8'),original,'opening a new request does not save partial edits');
 
   await replaceDocument(document,original);await api.startPlan(plan,root);
-  await replaceDocument(document,replacement);await api.next();
+  await replaceDocument(document,replacement);await acceptMatched(api);
   assert.equal(api.getState()?.complete,true);
   await vscode.commands.executeCommand('typeTheChange.start');
   assert.equal(api.getState()?.complete,true,'Start also resumes a completed guide for review');
@@ -265,7 +278,12 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     await typeCharacters('Ada")');
     assert.equal(editor.document.lineAt(1).text,'  return buildGreeting("Ada");','typing closing delimiters steps over auto-inserted characters');
     assert.equal(api.getState()?.status,'matched','native automatic pairs count as exact code');
-    await vscode.commands.executeCommand('typeTheChange.next');assert.equal(api.getState()?.complete,true);
+    assert.equal(api.getState()?.complete,false,'matching alone is never a judgment');
+    await api.predict('The function returns the generated greeting for Ada.');
+    await vscode.commands.executeCommand('typeTheChange.next');
+    assert.equal(api.getState()?.complete,false,'the keyboard command only opens comparison');
+    assert.equal(api.getState()?.judgment.phase,'review');
+    await api.decide({decision:'keep',evidence:'Checked the native buffer: buildGreeting receives Ada.'});assert.equal(api.getState()?.complete,true);
     assert.equal(await readFile(path.join(root,'native-pairs.ts'),'utf8'),original);
     await api.stop();
 
@@ -280,7 +298,7 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     await vscode.commands.executeCommand('cursorDown');await vscode.commands.executeCommand('cursorEnd');
     await typeCharacters('\nreturn 0;');
     assert.equal(api.getState()?.status,'matched','ordinary Enter and cursor movement reproduce a multiline target without manually duplicating indentation');
-    await api.next();assert.equal(api.getState()?.complete,true);await api.stop();
+    await acceptMatched(api);assert.equal(api.getState()?.complete,true);await api.stop();
 
     const windowsOriginal='export function windowsValue() {\r\n  return 1;\r\n}\r\n';
     const windows=await startFixture(api,root,'native-crlf.ts',windowsOriginal,[{file:'native-crlf.ts',before:'return 1;',after:'const value = 2;\n  return value;',reason:'Name the returned value.'}]);
@@ -288,7 +306,7 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     await typeCharacters('const value = 2;\nreturn value;');
     assert.equal(api.getState()?.status,'matched','LF plan snippets match native Enter in a CRLF document');
     assert.equal(windows.document.getText(),'export function windowsValue() {\r\n  const value = 2;\r\n  return value;\r\n}\r\n');
-    await api.next();assert.equal(api.getState()?.complete,true);await api.stop();
+    await acceptMatched(api);assert.equal(api.getState()?.complete,true);await api.stop();
 
     const sequenceOriginal='export function total(price: number) {\n  return price;\n}\n';
     const sequence=await startFixture(api,root,'native-sequence.ts',sequenceOriginal,[
@@ -296,11 +314,11 @@ async function testNativeTyping(api:ExtensionApi,root:string){
       {file:'native-sequence.ts',before:'return amount;',after:'return Math.max(0, amount);',reason:'Prevent a negative result.'},
     ]);
     await typeCharacters('const amount = price;\nreturn amount;');
-    assert.equal(api.getState()?.status,'matched');await vscode.commands.executeCommand('typeTheChange.next');
+    assert.equal(api.getState()?.status,'matched');await acceptMatched(api);
     assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
     assert.equal(sequence.document.getText(sequence.selection),'return amount;','the second same-file replacement is selected without a mouse');
     await typeCharacters('return Math.max(0, amount);');
-    assert.equal(api.getState()?.status,'matched');await api.next();assert.equal(api.getState()?.complete,true);
+    assert.equal(api.getState()?.status,'matched');await acceptMatched(api);assert.equal(api.getState()?.complete,true);
     assert.equal(await readFile(path.join(root,'native-sequence.ts'),'utf8'),sequenceOriginal);await api.stop();
   }finally{
     await api.stop();
@@ -330,7 +348,7 @@ async function testDeletionAndPanel(api:ExtensionApi,root:string,nativeTyping:bo
   else assert.equal(await editor.edit(edit=>edit.delete(editor.selection)),true,'editor-edit fallback verifies deletion matching without claiming native keyboard coverage');
   assert.equal(editor.document.getText(),'export function quiet() {\n  return 1;\n}\n');
   assert.equal(api.getState()?.status,'matched','deletion can complete an empty replacement');
-  await vscode.commands.executeCommand('typeTheChange.next');assert.equal(api.getState()?.complete,true);
+  await acceptMatched(api);assert.equal(api.getState()?.complete,true);
   await vscode.commands.executeCommand('typeTheChange.review');
   const diff=vscode.window.tabGroups.all.flatMap(group=>group.tabs).find(tab=>tab.input instanceof vscode.TabInputTextDiff&&tab.input.modified.fsPath===editor.document.uri.fsPath);
   assert.ok(diff,'Review opens the native before/current diff');
@@ -378,13 +396,13 @@ export async function run(){
   assert.equal(await readFile(file,'utf8'),original,'disk source unchanged');
   assert.equal(editor.document.getText(editor.selection),plan.steps[0].before,'exact change is selected');
   await editor.edit(edit=>edit.replace(editor.selection,'  return "he";'));
-  assert.equal(api.getState()?.status,'editing');await api.next();assert.equal(api.getState()?.complete,false,'partial code cannot advance');
+  assert.equal(api.getState()?.status,'editing');await acceptMatched(api);assert.equal(api.getState()?.complete,false,'partial code cannot advance');
   await editor.edit(edit=>edit.replace(new vscode.Range(1,0,1,editor.document.lineAt(1).text.length),plan.steps[0].after));
   assert.equal(api.getState()?.status,'matched');
   await editor.edit(edit=>edit.insert(new vscode.Position(0,0),'// unrelated\n'));
-  assert.equal(api.getState()?.status,'outside');await api.next();assert.equal(api.getState()?.complete,false,'outside edits stop acceptance');
+  assert.equal(api.getState()?.status,'outside');await acceptMatched(api);assert.equal(api.getState()?.complete,false,'outside edits stop acceptance');
   await editor.edit(edit=>edit.delete(new vscode.Range(0,0,1,0)));
-  assert.equal(api.getState()?.status,'matched');await api.next();assert.equal(api.getState()?.complete,true);
+  assert.equal(api.getState()?.status,'matched');await acceptMatched(api);assert.equal(api.getState()?.complete,true);
   await editor.edit(edit=>edit.replace(new vscode.Range(1,0,1,editor.document.lineAt(1).text.length),'  return "hi";'));
   assert.equal(api.getState()?.complete,false,'editing or undo after completion invalidates the claim');
   assert.equal(await readFile(file,'utf8'),original,'extension does not save user edits');

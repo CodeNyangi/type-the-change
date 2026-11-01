@@ -20,10 +20,12 @@ const planSchema = z.object({
 const statusSchema = z.object({
   version: z.literal(1),
   updatedAt: z.iso.datetime(),
-  state: z.enum(['idle', 'typing', 'matched', 'outside', 'complete']),
+  state: z.enum(['idle', 'typing', 'matched', 'outside', 'complete', 'rejected', 'deferred']),
   stepIndex: z.number().int().min(0).max(20),
   stepCount: z.number().int().min(0).max(20),
   planHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  reviewPhase: z.enum(['predict','edit','review','done']).optional(),
+  decision: z.enum(['keep','reject','defer']).nullable().optional(),
 });
 
 function hash(text: string): string { return createHash('sha256').update(text).digest('hex'); }
@@ -92,7 +94,7 @@ export function createTypingMcpServer(workspace: string): McpServer {
 
   server.registerTool('get_typing_status', {
     title: 'Read the last typing status',
-    description: 'Read the last status snapshot saved by the VS Code extension. Unavailable means the extension has not recorded a usable status. A matched or complete snapshot describes text agreement only, not current editor freshness, understanding, test results, or semantic correctness.',
+    description: 'Read the last status snapshot saved by the VS Code extension. Matched means text agreement. When reviewPhase is present, complete records a human keep decision, rejected a human rejection, and deferred a hold. Legacy complete means text agreement. No status proves freshness, understanding, passing tests or semantic correctness. Private prediction/evidence notes are not returned.',
     inputSchema: z.object({}).strict(),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, async () => {

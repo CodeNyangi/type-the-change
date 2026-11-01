@@ -1,8 +1,8 @@
 {
   "name": "type-the-change",
   "displayName": "Type the Change",
-  "description": "A VS Code extension for AI-assisted coding: read a proposed change, type it yourself, and review the diff. ChatGPT and MCP.",
-  "version": "0.2.0",
+  "description": "Practice judgment with AI code: predict the outcome, inspect the diff, and keep or reject a proposal with evidence. VS Code, ChatGPT and MCP.",
+  "version": "0.3.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
@@ -74,7 +74,7 @@
       },
       {
         "command": "typeTheChange.next",
-        "title": "Type the Change: Review and Continue"
+        "title": "Type the Change: Compare and Decide"
       },
       {
         "command": "typeTheChange.focus",
@@ -131,7 +131,7 @@
     "test:host": "node scripts/test-host.mjs",
     "test:ui:vscode": "node scripts/test-vscode-ui.mjs",
     "test:ui:webview": "node --import tsx scripts/test-webview-headless.mjs",
-    "package": "npm run build && vsce package --no-dependencies --out artifacts/type-the-change-0.2.0.vsix",
+    "package": "npm run build && vsce package --no-dependencies --out artifacts/type-the-change-0.3.0.vsix",
     "vscode:prepublish": "npm run build",
     "preview": "node --import tsx scripts/preview.ts"
   },
@@ -157,5 +157,11 @@
     "playwright": "1.64.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
+  },
+  "icon": "assets/icon.png",
+  "preview": true,
+  "galleryBanner": {
+    "color": "#f5f2e9",
+    "theme": "light"
   }
 }

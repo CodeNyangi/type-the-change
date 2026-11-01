@@ -10,3 +10,4 @@
 !dist/extension.cjs
 !dist/mcp-server.cjs
 !examples/**
+!assets/icon.png
