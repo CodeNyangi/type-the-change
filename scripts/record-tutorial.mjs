@@ -56,7 +56,6 @@ try{
   recordingFinished=once(recorder,'exit');started=Date.now();
   subtitle('AI 제안, 그대로 받아도 될까요?');await pause(2200);
   await command('Type the Change: Open a Plan');await view.locator('#prediction').waitFor({state:'visible'});
-  await command('Type the Change: Next Action');
   await view.waitForFunction(()=>document.activeElement?.id==='prediction');
   subtitle('1. 결과를 예상하고 Ctrl+Enter. 코드로 이어집니다.');
   await typeField(view.locator('#prediction'),'음수를 빼면 10 + 20 = 30');await page.keyboard.press('Control+Enter');

@@ -102,7 +102,7 @@ test('proposal disclosure persists while typing and resets on the next step or s
 test('comparison shortcut works for alternative text and cannot submit a judgment',()=>{
  const v=view();v.update({...step,status:'editing'});v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'advance');
  v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'proof'}});const count=v.messages.length;
- v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count);
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count+1);assert.equal(v.messages.at(-1).command,'advance');assert.equal(v.messages.some(message=>message.command==='decide'),false);
  v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);windows.close();
 });
 test('phase changes keep keyboard focus on visible controls',()=>{
