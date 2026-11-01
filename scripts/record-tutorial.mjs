@@ -28,7 +28,7 @@ async function panel(){
 async function state(view,value){
   await view.waitForFunction(value=>document.querySelector('#status')?.dataset.state===value,value);
 }
-async function typeField(locator,text){await locator.fill('');await locator.pressSequentially(text,{delay:50});}
+async function typeField(locator,text){await locator.click();await locator.fill(text);assert.equal(await locator.inputValue(),text);await pause(900);}
 async function run(file,args){
   const child=spawn(file,args,{stdio:'inherit'});const [code]=await once(child,'exit');if(code!==0)throw Error(`${file} exited ${code}`);
 }
@@ -55,10 +55,11 @@ try{
   recorder=spawn('ffmpeg',['-y','-loglevel','error','-f','x11grab','-video_size','1440x1000','-framerate','24','-i',process.env.DISPLAY,'-an','-c:v','libx264','-preset','ultrafast','-crf','18',path.join(output,'capture.mp4')],{stdio:['pipe','inherit','inherit']});
   recordingFinished=once(recorder,'exit');started=Date.now();
   subtitle('AI 제안, 그대로 받아도 될까요?');await pause(2200);
-  await view.locator('#other summary').click();await view.locator('[data-command="import"]').click();await view.locator('#prediction').waitFor({state:'visible'});
+  await view.locator('#other summary').click();await view.locator('[data-command="import"]').click();await view.locator('#prediction').waitFor({state:'visible'});await pause(700);
   subtitle('1. 제안을 보기 전에, 결과를 예상합니다.');
   await typeField(view.locator('#prediction'),'음수를 빼면 10 + 20 = 30');await pause(1200);await view.locator('#predict').click();
   await view.locator('#proposal > summary').click();await pause(2300);
+  assert.equal(await readFile(path.join(folder,'total.js'),'utf8'),await readFile('examples/judgment/total.js','utf8'));
   subtitle('2. 일부러 틀린 연습용 제안: return → break');
   await view.locator('#edit').click();await page.waitForFunction(()=>Boolean(document.activeElement?.closest('.monaco-editor')));
   await page.keyboard.type('      break;',{delay:160});await state(view,'matched');await pause(1800);
