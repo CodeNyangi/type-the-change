@@ -135,6 +135,11 @@
     "vscode:prepublish": "npm run build",
     "preview": "node --import tsx scripts/preview.ts"
   },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "11.0.1"
+    }
+  },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
     "jose": "6.2.14",

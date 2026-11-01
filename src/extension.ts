@@ -266,7 +266,9 @@ export function activate(context:vscode.ExtensionContext){
     const files=await vscode.window.showOpenDialog({canSelectMany:false,filters:{'Typing plan':['json']},openLabel:'수정안 열기'});if(!files?.[0]||epoch!==sessionEpoch)return;
     if(files[0].scheme!=='file')throw Error('로컬 파일로 저장된 수정안을 선택하세요.');
     const data=await readPlanFile(files[0].fsPath);if(epoch!==sessionEpoch)return;
-    await startPlan(parsePlan(data),root,epoch);
+    let plan:Plan;
+    try{plan=parsePlan(data);}catch{throw Error('수정안 형식이 올바르지 않아요. Type the Change용 JSON 파일인지 확인해 주세요.');}
+    await startPlan(plan,root,epoch);
   }
   async function loadPending(fromRoot?:string){const epoch=++sessionEpoch,root=fromRoot||await rootFolder();if(root&&epoch===sessionEpoch){const data=await readBridgeFile(root,'plan.json');if(epoch!==sessionEpoch)return;if(!data)throw Error('MCP에서 받은 수정안이 없어요.');await startPlan(parsePlan(JSON.stringify(data)),root,epoch);}}
   async function demo(){

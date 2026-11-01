@@ -211,6 +211,7 @@ try {
   if (!(await view.locator('[data-command="import"]').isVisible())) await view.locator('#other summary').click();
   await view.locator('[data-command="import"]').click();
   await view.locator('#error').waitFor({state: 'visible'});
+  await textIs(view, '#error', '수정안 형식이 올바르지 않아요. Type the Change용 JSON 파일인지 확인해 주세요.');
   assert.equal(await view.locator('#home').isVisible(), true);
   await page.screenshot({path: path.join(artifacts, 'invalid-import-recovery.png')});
   report.checks.push('Invalid JSON reports an error while keeping the usable composer available.');

@@ -2,6 +2,12 @@
 
 ## Unreleased — audit fixes
 
+- Keep the native editor and guide visibly side by side when starting from an empty workbench; show a Korean recovery instruction for invalid JSON imports.
+- Reject oversized intermediate files and conflicting physical-file aliases before accepting guidance; preserve reviewed completion when unchanged documents reload.
+- Serialize account operations across local extension hosts and recover all documented terminal refresh-token errors without erasing newer credentials.
+- Add 72 headless layout cases, ten real VS Code UI flow groups on a remote virtual display, minimum-version host coverage and Windows core checks. See `docs/background-verification-2026-11-01.md`.
+- Pin VSCE's minimatch dependency to patched 11.0.1 with an unchanged packaged file list.
+
 - Cancel demo/import/MCP preparation without reopening a stopped typing session.
 - Use UUID URNs for new ChatGPT registrations while preserving already-issued host bindings.
 - Treat terminal model output as authoritative; never revive a discarded or refused streamed draft.

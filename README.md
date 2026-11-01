@@ -117,6 +117,8 @@ npm run package
 
 `test:host` runs the extension in an isolated VS Code profile and temporary workspace. On macOS it can use the installed VS Code; otherwise it downloads a pinned VS Code test build. Linux requires a display, for example `xvfb-run -a npm run test:host`. The VSIX is written to `artifacts/`.
 
+For checks without opening a desktop window, install the isolated browser with `npx playwright install chromium --only-shell`, then run `npm run test:ui:webview`. Real workbench clicks run separately as `test:ui:vscode` on Linux CI with a virtual display; that script refuses local desktop launch. CI also checks the minimum VS Code version and Windows core behavior. See the [background verification report](docs/background-verification-2026-11-01.md) for results and limits.
+
 Install that local VSIX with **Extensions: Install from VSIX…** to try the development build. If you investigate authentication or editor behavior, include relevant verification and its limits in your issue report.
 
 Tests cover every webview command and state transition in a DOM environment, path boundaries, sequential plans, stdio MCP, OAuth state/PKCE/refresh/revocation, inference completion/cancellation, and real VS Code editor integration. Native typing tests use VS Code’s `type` command, including auto-pairs, indentation, CRLF, and deletion. A locked macOS host explicitly skips those keyboard cases; `TTC_REQUIRE_NATIVE_TYPING=1` and non-macOS runners require them. DOM tests do not verify browser pixels or real account consent.
