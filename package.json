@@ -131,7 +131,7 @@
     "test:host": "node scripts/test-host.mjs",
     "test:ui:vscode": "node scripts/test-vscode-ui.mjs",
     "test:ui:webview": "node --import tsx scripts/test-webview-headless.mjs",
-    "package": "npm run build && vsce package --no-dependencies --out artifacts/type-the-change-0.3.0.vsix",
+    "package": "npm run build && node scripts/package.mjs",
     "vscode:prepublish": "npm run build",
     "preview": "node --import tsx scripts/preview.ts"
   },
