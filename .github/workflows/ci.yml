@@ -48,6 +48,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Install headless browser
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Verify webview layouts and keyboard interactions
+        run: npm run test:ui:webview
       - name: Exercise real VS Code UI in a virtual display
         run: xvfb-run -a -s '-screen 0 1440x1000x24' npm run test:ui:vscode
       - name: Save UI evidence
@@ -55,13 +59,49 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: background-ui-evidence
-          path: artifacts/vscode-ui/
+          path: |
+            artifacts/vscode-ui/
+            artifacts/headless-webview/
+
+  minimum:
+    name: Minimum VS Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TTC_VSCODE_VERSION: 1.100.0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: xvfb-run -a npm run test:host
+
+  windows:
+    name: Windows core
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
 
   required:
     name: CI required
     # Report a failure even when a dependency fails, is cancelled, or is skipped.
     if: ${{ always() }}
-    needs: [check, ui]
+    needs: [check, ui, minimum, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -76,4 +116,4 @@ jobs:
       - name: Require successful dependencies
         env:
           NEEDS: ${{ toJSON(needs) }}
-        run: node .github/scripts/check-ci-results.mjs check ui
+        run: node .github/scripts/check-ci-results.mjs check ui minimum windows

@@ -82,6 +82,7 @@ try {
     'workbench.enableExperiments': false, 'telemetry.telemetryLevel': 'off',
     'security.workspace.trust.enabled': false, 'window.restoreWindows': 'none',
     'editor.accessibilitySupport': 'off', 'editor.quickSuggestions': false,
+    'chat.disableAIFeatures': true,
   }));
   const planFile = path.join(root, 'plan.json');
   await writeFile(planFile, JSON.stringify({version: 1, title: '두 값 바꾸기', intent: '두 값을 직접 수정합니다.', steps: [
@@ -93,12 +94,15 @@ try {
   delete env.ELECTRON_RUN_AS_NODE;
   app = await electron.launch({executablePath, env, timeout: 60_000, args: [
     workspace, `--user-data-dir=${profile}`, `--extensions-dir=${path.join(root, 'extensions')}`,
-    `--extensionDevelopmentPath=${process.cwd()}`, '--disable-extensions', '--disable-workspace-trust',
+    `--extensionDevelopmentPath=${process.cwd()}`, '--disable-workspace-trust',
     '--skip-welcome', '--skip-release-notes', '--disable-updates', '--no-sandbox',
   ]});
   page = await app.firstWindow();
   page.setDefaultTimeout(20_000);
   await page.locator('.monaco-workbench').waitFor({timeout: 60_000});
+  // Opening the command palette before startup activation snapshots an
+  // incomplete command list. Wait for the extension's visible entry point.
+  await page.locator('.statusbar-item').filter({hasText: 'Type the Change'}).waitFor({state: 'visible'});
   await command('Type the Change: Start');
   let view = await panel();
   await view.locator('#home').waitFor({state: 'visible'});

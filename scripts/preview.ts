@@ -9,7 +9,7 @@ const stages=[
  {title:'합계 반환',file:'price.ts',line:6,reason:'계산한 합계를 호출한 곳으로 돌려줍니다.',before:'  return 0;',after:'  return result;',step:2,total:2}
 ];
 function update(s){panelState=s;window.postMessage(s,'*');}
-function guide(i){step=i;update({...panelState,...stages[i],status:'untouched',message:'',canContinue:false,complete:false,busy:false,error:''});}
+function guide(i){step=i;update({...panelState,...stages[i],status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false,complete:false,busy:false,error:''});}
 window.acquireVsCodeApi=()=>({getState:()=>({intent:sessionStorage.getItem('draft')||''}),setState:s=>sessionStorage.setItem('draft',s.intent),postMessage:m=>{
  parent.postMessage({type:'command',...m},'*');
  switch(m.command){
@@ -32,7 +32,7 @@ window.addEventListener('message',({data:m})=>{if(m?.type==='fixture'){
  if(m.name==='outside')update({...panelState,status:'outside',message:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.',canContinue:false,complete:false});
  if(m.name==='error')update({...panelState,busy:false,error:'연결할 수 없어요. 다시 시도해 주세요.'});
  if(m.name==='delete')update({...panelState,...stages[0],title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',step:1,total:1,complete:false,status:'untouched',message:'',canContinue:false,busy:false,error:'',notice:''});
- if(m.name==='long')update({...panelState,...stages[0],file:'src/한글 경로/deeply/nested/components/long-file-name.ts',title:'긴 제목에서도 코드를 읽고 수정할 수 있도록 화면을 확인합니다',after:'const result = items.filter(item => item.price >= 0).map(item => ({ ...item, total: item.price * item.quantity }));',complete:false,status:'untouched',message:'',canContinue:false,busy:false,error:'',notice:''});
+ if(m.name==='long')update({...panelState,...stages[0],file:'src/한글 경로/deeply/nested/components/long-file-name.ts',title:'긴 제목에서도 코드를 읽고 수정할 수 있도록 화면을 확인합니다',after:'const result = items.filter(item => item.price >= 0).map(item => ({ ...item, total: item.price * item.quantity }));',complete:false,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false,busy:false,error:'',notice:''});
  if(m.name==='home')update({files:[],connected:false});
  if(m.name==='typing'&&panelState.file){const matched=m.value===panelState.after;update({...panelState,complete:false,status:matched?'matched':'editing',message:matched?'제안과 일치':'',canContinue:matched});}
 }});
