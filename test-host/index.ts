@@ -202,24 +202,26 @@ function guideTabs(){
 
 async function assertGuideBesideSource(file:string,sourceFocused=false){
   const deadline=Date.now()+5000;
-  const layout=()=>({source:vscode.window.visibleTextEditors.find(editor=>editor.document.uri.fsPath===file),guide:guideTabs().find(tab=>tab.isActive)});
+  const layout=()=>({source:vscode.window.visibleTextEditors.find(editor=>editor.document.uri.fsPath===file),guide:guideTabs().find(tab=>tab.isActive),focused:vscode.window.activeTextEditor});
   let current=layout();
-  while((current.source?.viewColumn!==vscode.ViewColumn.One||current.guide?.group.viewColumn!==vscode.ViewColumn.Two)&&Date.now()<deadline){
+  // Layout and active-editor notifications arrive on separate RPC paths.
+  // Require both to settle within the same bound before asserting either.
+  while((current.source?.viewColumn!==vscode.ViewColumn.One||current.guide?.group.viewColumn!==vscode.ViewColumn.Two||(sourceFocused&&current.focused?.document.uri.fsPath!==file))&&Date.now()<deadline){
     await new Promise(resolve=>setTimeout(resolve,25));current=layout();
   }
   assert.equal(current.source?.viewColumn,vscode.ViewColumn.One,'the native source remains visible in the first editor group');
   assert.equal(current.guide?.group.viewColumn,vscode.ViewColumn.Two,'the guide is the visible tab in a separate second editor group');
-  if(sourceFocused)assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath,file,'revealing the guide preserves native typing focus');
+  if(sourceFocused)assert.equal(current.focused?.document.uri.fsPath,file,'revealing the guide preserves native typing focus');
 }
 
 async function startFixture(api:ExtensionApi,root:string,file:string,original:string,steps:Plan['steps']){
   await writeFile(path.join(root,file),original);
   await api.startPlan({version:1,title:'Native typing',intent:'Change the selected source by typing.',steps},root);
+  await assertGuideBesideSource(path.join(root,file),true);
   const editor=vscode.window.activeTextEditor;
   assert.ok(editor,'starting guidance focuses a native editor');
   assert.equal(editor.document.uri.fsPath,path.join(root,file));
   assert.equal(editor.document.getText(),original,'opening guidance never types on behalf of the person');
-  await assertGuideBesideSource(path.join(root,file),true);
   await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
   return editor;
 }
