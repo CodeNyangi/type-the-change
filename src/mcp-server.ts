@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { stat } from 'node:fs/promises';
 import { parsePlan, validatePlanAgainstFiles } from './plan.js';
-import { readWorkspaceFile, readBridgeFile, writeBridgeFile, WorkspaceFileError } from './workspace-files.js';
+import { readWorkspaceFile, readBridgeFile, writeBridgeFile, assertDistinctWorkspaceFiles, WorkspaceFileError } from './workspace-files.js';
 
 const stepSchema = z.object({
   file: z.string().min(1).max(512),
@@ -75,6 +75,7 @@ export function createTypingMcpServer(workspace: string): McpServer {
     catch { return failed('invalid_plan'); }
     const files = new Map<string, string>();
     try {
+      await assertDistinctWorkspaceFiles(workspace, plan.steps.map(step => step.file));
       for (const file of new Set(plan.steps.map(step => step.file))) files.set(file, await readWorkspaceFile(workspace, file));
       try { validatePlanAgainstFiles(plan, files); }
       catch { return failed('source_does_not_match'); }

@@ -122,3 +122,16 @@ test('preflight simulates sequential changes and leaves input files untouched', 
   assert.throws(() => validatePlanAgainstFiles(plan, new Map()), /unavailable file/);
   assert.throws(() => validatePlanAgainstFiles(makePlan({ steps: [{ ...step, file: '../outside.ts' }] }), files), /path/);
 });
+
+test('preflight bounds every intermediate file by UTF-8 bytes after line-ending conversion', () => {
+  const original = 'x'.repeat(65_530) + 'a';
+  const files = new Map([[step.file, original]]);
+  const exact = { ...step, before: 'a', after: '가나' };
+  assert.equal(Buffer.byteLength('x'.repeat(65_530) + exact.after), 65_536);
+  assert.doesNotThrow(() => validatePlanAgainstFiles(makePlan({ steps: [exact] }), files));
+  const oversized = { ...exact, after: '가나!' };
+  assert.throws(() => validatePlanAgainstFiles(makePlan({ steps: [oversized] }), files), /Step 1.*64 KiB/);
+  assert.throws(() => validatePlanAgainstFiles(makePlan({ steps: [oversized, { ...step, before: '가나!', after: 'b' }] }), files), /Step 1.*64 KiB/);
+  assert.throws(() => validatePlanAgainstFiles(makePlan({ steps: [{ ...step, before: 'a', after: 'a\nbb' }] }), new Map([[step.file, original + '\r\n']])), /64 KiB/);
+  assert.equal(files.get(step.file), original);
+});

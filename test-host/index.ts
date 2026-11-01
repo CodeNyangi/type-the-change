@@ -200,6 +200,18 @@ function guideTabs(){
   return vscode.window.tabGroups.all.flatMap(group=>group.tabs).filter(tab=>tab.input instanceof vscode.TabInputWebview&&types.has(tab.input.viewType));
 }
 
+async function assertGuideBesideSource(file:string,sourceFocused=false){
+  const deadline=Date.now()+5000;
+  const layout=()=>({source:vscode.window.visibleTextEditors.find(editor=>editor.document.uri.fsPath===file),guide:guideTabs().find(tab=>tab.isActive)});
+  let current=layout();
+  while((current.source?.viewColumn!==vscode.ViewColumn.One||current.guide?.group.viewColumn!==vscode.ViewColumn.Two)&&Date.now()<deadline){
+    await new Promise(resolve=>setTimeout(resolve,25));current=layout();
+  }
+  assert.equal(current.source?.viewColumn,vscode.ViewColumn.One,'the native source remains visible in the first editor group');
+  assert.equal(current.guide?.group.viewColumn,vscode.ViewColumn.Two,'the guide is the visible tab in a separate second editor group');
+  if(sourceFocused)assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath,file,'revealing the guide preserves native typing focus');
+}
+
 async function startFixture(api:ExtensionApi,root:string,file:string,original:string,steps:Plan['steps']){
   await writeFile(path.join(root,file),original);
   await api.startPlan({version:1,title:'Native typing',intent:'Change the selected source by typing.',steps},root);
@@ -207,6 +219,7 @@ async function startFixture(api:ExtensionApi,root:string,file:string,original:st
   assert.ok(editor,'starting guidance focuses a native editor');
   assert.equal(editor.document.uri.fsPath,path.join(root,file));
   assert.equal(editor.document.getText(),original,'opening guidance never types on behalf of the person');
+  await assertGuideBesideSource(path.join(root,file),true);
   await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
   return editor;
 }
@@ -306,6 +319,7 @@ async function testDeletionAndPanel(api:ExtensionApi,root:string,nativeTyping:bo
   assert.equal(api.getState()?.status,'untouched','closing the guide keeps the typing session');
   await vscode.commands.executeCommand('typeTheChange.start');
   assert.equal(guideTabs().length,1,'Start reopens the existing session guide');
+  await assertGuideBesideSource(editor.document.uri.fsPath);
   assert.equal(editor.document.getText(),original,'closing and reopening never changes source');
   await vscode.commands.executeCommand('typeTheChange.focus');
   assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath,editor.document.uri.fsPath,'the focus command returns to native source');
@@ -348,8 +362,15 @@ export async function run(){
   const extension=vscode.extensions.all.find(e=>e.id.toLowerCase()==='codenyangi.type-the-change');assert.ok(extension,'extension discovered');
   const api=await extension.activate() as ExtensionApi;
   await testCommands(extension as vscode.Extension<ExtensionApi>);
+  // Reproduce the real first-run flow: the home webview initially occupies the
+  // only group, then importing/starting guidance must leave both views visible.
+  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await vscode.commands.executeCommand('workbench.action.joinAllGroups');
+  await vscode.commands.executeCommand('typeTheChange.start');
+  assert.equal(guideTabs().length,1,'the home panel opens in an otherwise empty workbench');
   const plan:Plan={version:1,title:'Greet warmly',intent:'Change the greeting',steps:[{file:'sample.ts',before:'  return "hi";',after:'  return "hello";',reason:'Keep the same function and change its return value.'}]};
   await api.startPlan(plan,root);
+  await assertGuideBesideSource(file,true);
   const editor=vscode.window.visibleTextEditors.find(e=>e.document.uri.fsPath===file)!;assert.ok(editor);
   assert.equal(editor.document.getText(),original,'starting never edits source');
   assert.equal(await readFile(file,'utf8'),original,'disk source unchanged');

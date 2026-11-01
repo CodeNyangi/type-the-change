@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from 'jose';
+import type { AccountLock } from './account-lock.js';
 
 // Official OSS SIWC flow, not Codex's private session or an API-key fallback.
 // https://developers.openai.com/siwc/token-sharing-open-source/sign-in
@@ -19,6 +20,11 @@ const REGISTRATION_KEY = 'typeTheChange.chatgpt.registration.v1';
 const MAX_BODY = 256 * 1024;
 const NETWORK_TIMEOUT = 15_000;
 const SIGN_IN_TIMEOUT = 10 * 60_000;
+// https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery
+const UNUSABLE_REFRESH_CODES = new Set([
+  'invalid_grant', 'invalid_refresh_token', 'token_expired',
+  'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused',
+]);
 
 export interface SecretStore {
   get(key: string): PromiseLike<string | undefined>;
@@ -30,6 +36,8 @@ export interface ChatGPTAuthOptions {
   secrets: SecretStore;
   openExternal: (url: string) => PromiseLike<boolean>;
   appName: string;
+  // Hosts that share a SecretStore must use the same local account lock.
+  lockAccount?: AccountLock;
 }
 
 interface Account {
@@ -55,6 +63,7 @@ interface Tokens {
 
 export class AuthError extends Error {
   constructor(message: string, readonly oauthCode?: string) { super(message); }
+  get requiresSignIn(): boolean { return Boolean(this.oauthCode && UNUSABLE_REFRESH_CODES.has(this.oauthCode)); }
 }
 class InvalidSavedAccountError extends AuthError {}
 
@@ -178,9 +187,10 @@ async function request(url: string, init: RequestInit, signal?: AbortSignal, emp
       let code: string | undefined;
       try {
         const supplied = object(JSON.parse(body)).error;
-        if (['invalid_grant', 'invalid_client', 'access_denied', 'invalid_scope'].includes(String(supplied))) code = String(supplied);
+        if (typeof supplied === 'string' && (UNUSABLE_REFRESH_CODES.has(supplied) ||
+            ['invalid_client', 'access_denied', 'invalid_scope'].includes(supplied))) code = supplied;
       } catch { /* Never include provider bodies or tokens in errors. */ }
-      throw new AuthError(`OpenAI authentication failed (${response.status}).${code === 'invalid_grant' ? ' Sign in again.' : ''}`, code);
+      throw new AuthError(`OpenAI authentication failed (${response.status}).${code && UNUSABLE_REFRESH_CODES.has(code) ? ' Sign in again.' : ''}`, code);
     }
     if (empty) return undefined;
     try { return JSON.parse(body); } catch { throw new AuthError('Invalid OpenAI response.'); }
@@ -248,7 +258,7 @@ export class ChatGPTAuth {
     if (this.pendingSignIn || this.signingOut || this.pendingRefresh) return Promise.reject(new AuthError('Another ChatGPT account operation is in progress.'));
     const limit = deadline(signal, SIGN_IN_TIMEOUT);
     this.signInController = limit.controller;
-    const pending = this.performSignIn(limit.signal).finally(() => {
+    const pending = this.withAccountLock(() => this.performSignIn(limit.signal), limit.signal).finally(() => {
       limit.dispose(); this.pendingSignIn = undefined; this.signInController = undefined;
     });
     this.pendingSignIn = pending;
@@ -258,17 +268,22 @@ export class ChatGPTAuth {
   async getAccessToken(signal?: AbortSignal): Promise<string> {
     checkAborted(signal);
     if (this.signingOut) throw new AuthError('ChatGPT is signing out.');
-    const account = await this.load();
-    checkAborted(signal);
-    if (this.signingOut || this.pendingSignIn) throw new AuthError('Another ChatGPT account operation is in progress.');
-    if (!account?.idToken || !account.accessToken) throw new AuthError('Continue with ChatGPT first.');
-    if (!grantedPlanAccess(account.scopes)) throw new AuthError('Allow this app to use your ChatGPT plan when signing in.');
-    if (account.expiresAt && account.expiresAt > Date.now() + 60_000) return account.accessToken;
-    if (!account.refreshToken) throw new AuthError('Your ChatGPT session expired. Sign in again.');
+    if (this.pendingSignIn) throw new AuthError('Another ChatGPT account operation is in progress.');
     if (!this.pendingRefresh) {
       this.refreshController = new AbortController();
       // Caller cancellation must not abandon a rotating refresh token mid-save.
-      this.pendingRefresh = this.refresh(account, this.refreshController.signal).finally(() => {
+      const refreshSignal = this.refreshController.signal;
+      this.pendingRefresh = this.withAccountLock(async () => {
+        // Another extension host may have refreshed or signed out while this
+        // host waited. Never send or save a pre-lock credential snapshot.
+        const account = await this.load();
+        checkAborted(refreshSignal);
+        if (!account?.idToken || !account.accessToken) throw new AuthError('Continue with ChatGPT first.');
+        if (!grantedPlanAccess(account.scopes)) throw new AuthError('Allow this app to use your ChatGPT plan when signing in.');
+        if (account.expiresAt && account.expiresAt > Date.now() + 60_000) return account.accessToken;
+        if (!account.refreshToken) throw new AuthError('Your ChatGPT session expired. Sign in again.');
+        return this.refresh(account, refreshSignal);
+      }, refreshSignal).finally(() => {
         this.pendingRefresh = undefined; this.refreshController = undefined;
       });
     }
@@ -286,32 +301,48 @@ export class ChatGPTAuth {
     let unconfirmed = false;
     try {
       await Promise.allSettled([this.pendingSignIn, this.pendingRefresh].filter(Boolean));
-      let account: Account | undefined;
-      try { account = await this.load(); }
-      catch (error) {
-        if (!(error instanceof InvalidSavedAccountError)) throw error;
-        // Corrupt metadata must not make the only recovery control unusable.
-        // It cannot safely identify a remote session to revoke.
-        await this.options.secrets.delete(ACCOUNT_KEY);
-        unconfirmed = true;
-      }
-      if (account?.refreshToken) {
-        try {
-          await this.discovery();
-          const body = new URLSearchParams({ token: account.refreshToken, token_type_hint: 'refresh_token', client_id: account.clientId });
-          for (let attempt = 0; ; attempt++) {
-            try { await request(REVOKE, { method: 'POST', body }, undefined, true); break; }
-            catch (error) {
-              if (attempt >= 1) throw error;
-              await new Promise(resolve => setTimeout(resolve, 250));
+      await this.withAccountLock(async () => {
+        let account: Account | undefined;
+        try { account = await this.load(); }
+        catch (error) {
+          if (!(error instanceof InvalidSavedAccountError)) throw error;
+          // Corrupt metadata must not make the only recovery control unusable.
+          // It cannot safely identify a remote session to revoke.
+          await this.options.secrets.delete(ACCOUNT_KEY);
+          unconfirmed = true;
+        }
+        if (account?.refreshToken) {
+          try {
+            await this.discovery();
+            const body = new URLSearchParams({ token: account.refreshToken, token_type_hint: 'refresh_token', client_id: account.clientId });
+            for (let attempt = 0; ; attempt++) {
+              try { await request(REVOKE, { method: 'POST', body }, undefined, true); break; }
+              catch (error) {
+                if (attempt >= 1) throw error;
+                await new Promise(resolve => setTimeout(resolve, 250));
+              }
             }
-          }
-        } catch { unconfirmed = true; }
-      }
-      if (account) await this.options.secrets.store(ACCOUNT_KEY, JSON.stringify(withoutTokens(account)));
-      else await this.options.secrets.delete(ACCOUNT_KEY);
+          } catch { unconfirmed = true; }
+        }
+        if (account) await this.options.secrets.store(ACCOUNT_KEY, JSON.stringify(withoutTokens(account)));
+        else await this.options.secrets.delete(ACCOUNT_KEY);
+      });
     } finally { this.signingOut = false; }
     if (unconfirmed) throw new AuthError('Signed out locally. Remote revocation was not confirmed; disconnect this app in ChatGPT Settings.');
+  }
+
+  private async withAccountLock<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const release = await this.options.lockAccount?.(signal);
+    let succeeded = false;
+    try {
+      checkAborted(signal);
+      const result = await operation();
+      succeeded = true;
+      return result;
+    } finally {
+      try { await release?.(); }
+      catch (error) { if (succeeded) throw error; }
+    }
   }
 
   private async load(): Promise<Account | undefined> {
@@ -484,7 +515,7 @@ export class ChatGPTAuth {
       if (!grantedPlanAccess(next.scopes)) throw new AuthError('ChatGPT plan permission was removed. Sign in again.');
       return next.accessToken!;
     } catch (error) {
-      if (error instanceof AuthError && error.oauthCode === 'invalid_grant') {
+      if (error instanceof AuthError && error.oauthCode && UNUSABLE_REFRESH_CODES.has(error.oauthCode)) {
         await this.options.secrets.store(ACCOUNT_KEY, JSON.stringify(withoutTokens(account)));
       }
       throw error;

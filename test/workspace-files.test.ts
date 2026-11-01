@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, readdir, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, link, rm, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readWorkspaceFile, writeBridgeFile, readBridgeFile, WorkspaceFileError, MAX_SOURCE_BYTES, MAX_BRIDGE_BYTES } from '../src/workspace-files.js';
+import { readWorkspaceFile, writeBridgeFile, readBridgeFile, assertDistinctWorkspaceFiles, WorkspaceFileError, MAX_SOURCE_BYTES, MAX_BRIDGE_BYTES } from '../src/workspace-files.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +26,30 @@ test('source reader returns bounded saved UTF-8 contents without changing the fi
   const before = await readFile(join(root, 'src', 'example.ts'));
   assert.equal(await readWorkspaceFile(root, 'src/example.ts'), before.toString());
   assert.deepEqual(await readFile(join(root, 'src', 'example.ts')), before);
+});
+
+test('plan file identities allow repeated steps but reject distinct hard-linked paths', async t => {
+  const root = await fixture(t);
+  await assertDistinctWorkspaceFiles(root, ['src/example.ts', 'src/example.ts']);
+  await writeFile(join(root, 'another.ts'), 'export const answer = 41;\n');
+  await assertDistinctWorkspaceFiles(root, ['src/example.ts', 'another.ts']);
+  await link(join(root, 'src', 'example.ts'), join(root, 'alias.ts'));
+  await assert.rejects(assertDistinctWorkspaceFiles(root, ['src/example.ts', 'alias.ts']), withCode('duplicate_file'));
+});
+
+test('case variants are rejected only when the filesystem identifies them as one file', async t => {
+  const root = await fixture(t);
+  const variant = join(root, 'src', 'EXAMPLE.ts');
+  const existing = await stat(variant).catch(error => {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (existing) {
+    await assert.rejects(assertDistinctWorkspaceFiles(root, ['src/example.ts', 'src/EXAMPLE.ts']), withCode('duplicate_file'));
+  } else {
+    await writeFile(variant, 'export const other = 1;\n');
+    await assertDistinctWorkspaceFiles(root, ['src/example.ts', 'src/EXAMPLE.ts']);
+  }
 });
 
 test('source reader rejects traversal, credentials, internal files, and missing paths', async t => {

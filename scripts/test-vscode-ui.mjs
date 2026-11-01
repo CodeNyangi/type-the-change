@@ -61,6 +61,12 @@ async function statusIs(frame, expected) {
     `Expected guide state ${expected}`);
 }
 
+async function focusSource(frame) {
+  await frame.locator('#file').click();
+  // Webview messages cross processes before showTextDocument restores focus.
+  await page.waitForFunction(() => Boolean(document.activeElement?.closest('.monaco-editor')));
+}
+
 async function toggleFile(relative) {
   const input = page.locator('.quick-input-widget input[type="text"]');
   await input.fill(relative);
@@ -77,6 +83,7 @@ try {
   const firstBefore = 'export const first = 1;\n', secondBefore = 'export const second = 10;\n';
   await writeFile(path.join(workspace, first), firstBefore);
   await writeFile(path.join(workspace, second), secondBefore);
+  await writeFile(path.join(workspace, 'pending.ts'), 'export const pending = 1;\n');
   await writeFile(path.join(profile, 'User/settings.json'), JSON.stringify({
     'workbench.startupEditor': 'none', 'workbench.colorTheme': 'Default Dark Modern',
     'workbench.enableExperiments': false, 'telemetry.telemetryLevel': 'off',
@@ -102,7 +109,7 @@ try {
   await page.locator('.monaco-workbench').waitFor({timeout: 60_000});
   // Opening the command palette before startup activation snapshots an
   // incomplete command list. Wait for the extension's visible entry point.
-  await page.locator('.statusbar-item').filter({hasText: 'Type the Change'}).waitFor({state: 'visible'});
+  await page.locator('.statusbar-item').filter({hasText: 'Type the Change'}).waitFor({state: 'visible', timeout: 60_000});
   await command('Type the Change: Start');
   let view = await panel();
   await view.locator('#home').waitFor({state: 'visible'});
@@ -133,7 +140,7 @@ try {
   await textIs(view, '#after', '2');
   assert.equal(await view.locator('#next').isDisabled(), true);
   assert.equal(await readFile(path.join(workspace, first), 'utf8'), firstBefore);
-  await view.locator('#file').click();
+  await focusSource(view);
   await page.keyboard.type('2');
   await statusIs(view, 'matched');
   report.checks.push('JSON import opens a real guide without editing source; native keyboard typing matches the first step.');
@@ -152,7 +159,7 @@ try {
 
   await page.keyboard.press('Control+Alt+Enter');
   await textIs(view, '#after', '20');
-  await view.locator('#file').click();
+  await focusSource(view);
   await page.keyboard.type('20');
   await statusIs(view, 'matched');
   await view.locator('#next').click();
@@ -174,6 +181,39 @@ try {
   await view.locator('#home').waitFor({state: 'visible'});
   assert.equal(await view.locator('#intent').inputValue(), '음수 가격을 제외해 주세요');
   report.checks.push('New request returns to the composer and preserves its draft.');
+
+  await view.locator('#demo').click();
+  await view.locator('#guide').waitFor({state: 'visible'});
+  await view.locator('#file').waitFor({state: 'visible'});
+  await view.locator('#end').click();
+  await view.locator('#home').waitFor({state: 'visible'});
+  report.checks.push('Try the Demo opens visible guidance beside source; End Session returns to the composer.');
+
+  await mkdir(path.join(workspace, '.type-the-change'), {recursive: true});
+  await writeFile(path.join(workspace, '.type-the-change/plan.json'), JSON.stringify({
+    version: 1, title: 'MCP에서 받은 수정안', intent: '대기 중인 수정안을 열기',
+    steps: [{file: 'pending.ts', before: '1', after: '2', reason: '값 수정'}],
+  }));
+  if (!(await view.locator('[data-command="loadPending"]').isVisible())) await view.locator('#other summary').click();
+  await view.locator('[data-command="loadPending"]').click();
+  await textIs(view, '#title', 'MCP에서 받은 수정안');
+  await view.locator('#file').waitFor({state: 'visible'});
+  assert.equal(await readFile(path.join(workspace, 'pending.ts'), 'utf8'), 'export const pending = 1;\n');
+  await view.locator('#end').click();
+  await view.locator('#home').waitFor({state: 'visible'});
+  report.checks.push('Open MCP Plan loads actual workspace bridge data without changing source.');
+
+  const invalidPlan = path.join(root, 'invalid-plan.json');
+  await writeFile(invalidPlan, '{not json');
+  await app.evaluate(({dialog}, file) => {
+    dialog.showOpenDialog = async () => ({canceled: false, filePaths: [file]});
+  }, invalidPlan);
+  if (!(await view.locator('[data-command="import"]').isVisible())) await view.locator('#other summary').click();
+  await view.locator('[data-command="import"]').click();
+  await view.locator('#error').waitFor({state: 'visible'});
+  assert.equal(await view.locator('#home').isVisible(), true);
+  await page.screenshot({path: path.join(artifacts, 'invalid-import-recovery.png')});
+  report.checks.push('Invalid JSON reports an error while keeping the usable composer available.');
   report.success = true;
   console.log(`VS CODE UI PASSED: ${report.checks.length} flow groups.`);
 } catch (error) {

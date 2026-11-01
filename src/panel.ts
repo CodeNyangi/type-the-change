@@ -9,9 +9,10 @@ export class GuidePanel implements vscode.Disposable {
   private state:PanelState={};
   constructor(private onCommand:(message:PanelMessage)=>void){}
   show(preserveFocus=false){
-    if(this.panel){this.panel.reveal(vscode.ViewColumn.Beside,preserveFocus);return;}
+    const viewColumn=this.state.file?vscode.ViewColumn.Two:(this.panel?.viewColumn??vscode.ViewColumn.Beside);
+    if(this.panel){this.panel.reveal(viewColumn,preserveFocus);return;}
     this.panel=vscode.window.createWebviewPanel('typeTheChange.guide','Type the Change',
-      {viewColumn:vscode.ViewColumn.Beside,preserveFocus},
+      {viewColumn,preserveFocus},
       {enableScripts:true,localResourceRoots:[],retainContextWhenHidden:true});
     this.panel.webview.html=panelHtml(randomBytes(24).toString('base64'),process.platform==='darwin');
     this.panel.webview.onDidReceiveMessage(message=>{

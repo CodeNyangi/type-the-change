@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { build } from 'esbuild';
 import type { PanelState } from '../src/panel-view.js';
 
@@ -13,6 +16,7 @@ const ACCOUNT = 'typeTheChange.chatgpt.account.v1';
 afterEach(() => mock.restoreAll());
 
 function fixture(failStatusAfterRevocation = false) {
+  const storage = mkdtempSync(join(tmpdir(), 'ttc-auth-storage-'));
   const commands = new Map<string, (...args: unknown[]) => unknown>();
   const messages: PanelState[] = [];
   const values = new Map<string, string>([[ACCOUNT, JSON.stringify({
@@ -50,7 +54,7 @@ function fixture(failStatusAfterRevocation = false) {
   const module = { exports: {} as { activate(context: unknown): unknown } };
   loadExtension((name: string) => name === 'vscode' ? vscode : realRequire(name), module, module.exports);
   module.exports.activate({
-    subscriptions, globalState: { get() { return undefined; }, async update() {} },
+    subscriptions, globalStorageUri: { fsPath: storage }, globalState: { get() { return undefined; }, async update() {} },
     secrets: {
       async get(key: string) { if (failStatus) throw Error('private-storage-error'); return values.get(key); },
       async store(key: string, value: string) {
@@ -61,7 +65,7 @@ function fixture(failStatusAfterRevocation = false) {
     },
   });
   const run = async (name: string) => { const action = commands.get(`typeTheChange.${name}`); assert.ok(action); await action(); };
-  return { run, messages, values, close() { for (const subscription of subscriptions) subscription.dispose(); } };
+  return { run, messages, values, close() { for (const subscription of subscriptions) subscription.dispose(); rmSync(storage, { recursive: true, force: true }); } };
 }
 
 test('revoked refresh exposes reconnect in the actual command-to-panel flow', async () => {
@@ -92,4 +96,16 @@ test('a secondary status-read failure cannot swallow the original reconnect erro
     assert.doesNotMatch(f.messages.at(-1)?.error ?? '', /private-storage-error/);
     assert.equal(f.messages.at(-1)?.busy, false);
   } finally { f.close(); }
+});
+
+test('all documented terminal refresh errors restore the localized reconnect action', async () => {
+  for (const code of ['invalid_refresh_token', 'token_expired', 'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused']) {
+    const f = fixture();
+    mock.method(globalThis, 'fetch', async () => Response.json({ error: code }, { status: 400 }));
+    try {
+      await f.run('start'); await f.run('chooseModel');
+      assert.equal(f.messages.at(-1)?.connected, false);
+      assert.match(f.messages.at(-1)?.error ?? '', /연결이 만료.*다시 연결/);
+    } finally { f.close(); mock.restoreAll(); }
+  }
 });

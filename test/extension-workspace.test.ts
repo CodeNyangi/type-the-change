@@ -55,7 +55,7 @@ async function fixture(){
   const module={exports:{} as {activate(context:unknown):unknown}};
   loadExtension((name:string)=>name==='vscode'?vscode:realRequire(name),module,module.exports);
   const account=JSON.stringify({version:1,clientId:'oaiapp_test',subject:'subject',nonce:'nonce',idToken:'test-id',accessToken:'test-access',refreshToken:'test-refresh',expiresAt:Date.now()+3_600_000,scopes:['openid','resource.invoke','chatgpt.tokens.use.direct']});
-  module.exports.activate({subscriptions,asAbsolutePath:(file:string)=>path.resolve(file),globalState:{get(){return undefined;},async update(){}},secrets:{async get(key:string){return key==='typeTheChange.chatgpt.account.v1'?account:undefined;},async store(){},async delete(){}}});
+  module.exports.activate({subscriptions,globalStorageUri:uri(path.join(base,'auth-storage')),asAbsolutePath:(file:string)=>path.resolve(file),globalState:{get(){return undefined;},async update(){}},secrets:{async get(key:string){return key==='typeTheChange.chatgpt.account.v1'?account:undefined;},async store(){},async delete(){}}});
   const run=async(name:string,...args:unknown[])=>{const action=commands.get(`typeTheChange.${name}`);assert.ok(action);await action(...args);};
   await run('start');await run('chooseFiles');
   return {run,messages,workspace,selected,file,original,findCalls,

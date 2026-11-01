@@ -4,8 +4,9 @@ import {readFile,mkdtemp,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import {parsePlan,resolveStep,inspectStep,validatePlanAgainstFiles,validateRelativePath,type Plan,type ResolvedStep} from './plan.js';
-import {readWorkspaceFile,readBridgeFile,writeBridgeFile,WorkspaceFileError} from './workspace-files.js';
+import {readWorkspaceFile,readBridgeFile,writeBridgeFile,assertDistinctWorkspaceFiles,WorkspaceFileError,MAX_SOURCE_BYTES} from './workspace-files.js';
 import {AuthError,ChatGPTAuth} from './auth.js';
+import {createAccountLock} from './account-lock.js';
 import {listModels,generatePlan,InferenceError} from './inference.js';
 import {GuidePanel,type PanelState} from './panel.js';
 import {readPlanFile} from './plan-file.js';
@@ -23,7 +24,7 @@ export function activate(context:vscode.ExtensionContext){
   const status=vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left,50);
   const decoration=vscode.window.createTextEditorDecorationType({backgroundColor:new vscode.ThemeColor('editor.wordHighlightBackground'),border:'1px solid',borderColor:new vscode.ThemeColor('editor.wordHighlightBorder'),rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed});
   const difference=vscode.window.createTextEditorDecorationType({borderWidth:'0 0 2px 0',borderStyle:'solid',borderColor:new vscode.ThemeColor('editorWarning.foreground'),rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed});
-  const auth=new ChatGPTAuth({secrets:context.secrets,appName:'Type the Change',openExternal:async url=>vscode.env.openExternal(vscode.Uri.parse(url))});
+  const auth=new ChatGPTAuth({secrets:context.secrets,appName:'Type the Change',lockAccount:createAccountLock(context.globalStorageUri.fsPath),openExternal:async url=>vscode.env.openExternal(vscode.Uri.parse(url))});
   status.command='typeTheChange.start';status.text='$(edit) Type the Change';status.show();
   function local(){if(!vscode.workspace.isTrusted)throw Error('신뢰한 폴더에서 시작해 주세요.');if(vscode.env.remoteName)throw Error('첫 버전은 로컬 VS Code 폴더에서 사용할 수 있어요.');}
   async function rootFolder(){
@@ -43,7 +44,7 @@ export function activate(context:vscode.ExtensionContext){
     await readWorkspaceFile(root,file); // Validate filesystem boundaries before using a dirty editor buffer.
     const uri=vscode.Uri.file(path.join(root,file));
     const document=await vscode.workspace.openTextDocument(uri);
-    const text=document.getText();if(Buffer.byteLength(text)>65536)throw Error('파일이 너무 커요. 64 KiB 이하 파일을 골라 주세요.');
+    const text=document.getText();if(Buffer.byteLength(text)>MAX_SOURCE_BYTES)throw Error('파일이 너무 커요. 64 KiB 이하 파일을 골라 주세요.');
     return {document,text};
   }
   function clearDecorations(){for(const editor of vscode.window.visibleTextEditors){editor.setDecorations(decoration,[]);editor.setDecorations(difference,[]);}}
@@ -78,10 +79,13 @@ export function activate(context:vscode.ExtensionContext){
     const common:PanelState={files:composer.files,model:composer.modelName,connected:composer.connected,busy,phase:composer.phase,error:composer.error,notice:composer.notice};
     if(!session){panel.update(common);return;}
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);
-    if(s.complete&&inspection.status!=='matched'){s.complete=false;void vscode.commands.executeCommand('setContext','typeTheChange.active',true);}
+    // Disposal temporarily removes comparison evidence. Keep the recorded
+    // review until reopening establishes whether code actually changed.
+    if(s.complete&&inspection.status!=='matched'&&![...s.documents.values()].some(document=>document.isClosed)){s.complete=false;void vscode.commands.executeCommand('setContext','typeTheChange.active',true);}
+    const complete=s.complete&&inspection.status==='matched';
     const messages={untouched:s.resolved.after===''?'':'선택된 코드를 직접 바꿔 보세요.',editing:'',matched:'제안과 일치',outside:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.'};
-    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:inspection.status==='matched',complete:s.complete});
-    status.text=s.complete?'$(check) 직접 바꿈':`$(edit) ${s.index+1}/${s.plan.steps.length}${inspection.status==='matched'?' ✓':''}`;
+    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:inspection.status==='matched',complete});
+    status.text=complete?'$(check) 직접 바꿈':`$(edit) ${s.index+1}/${s.plan.steps.length}${inspection.status==='matched'?' ✓':''}`;
     status.tooltip='Type the Change';status.command='typeTheChange.start';
     clearDecorations();
     if(!s.complete&&inspection.status!=='outside')for(const editor of vscode.window.visibleTextEditors){
@@ -90,7 +94,7 @@ export function activate(context:vscode.ExtensionContext){
       editor.setDecorations(decoration,[new vscode.Range(start,end)]);
       if(inspection.status==='editing'&&inspection.firstDifference>=0){const offset=s.resolved.start+inspection.firstDifference;editor.setDecorations(difference,[new vscode.Range(s.document.positionAt(offset),s.document.positionAt(Math.min(offset+1,s.document.getText().length)))]);}
     }
-    saveStatus(s.complete?'complete':inspection.status==='untouched'||inspection.status==='editing'?'typing':inspection.status);
+    saveStatus(complete?'complete':inspection.status==='untouched'||inspection.status==='editing'?'typing':inspection.status);
   }
   async function focus(select=false){
     if(!session)return;
@@ -109,6 +113,7 @@ export function activate(context:vscode.ExtensionContext){
   }
   async function startPlan(plan:Plan,root:string,requestEpoch?:number){
     local();const epoch=requestEpoch??++sessionEpoch;if(epoch!==sessionEpoch)return;
+    await assertDistinctWorkspaceFiles(root,plan.steps.map(step=>step.file));if(epoch!==sessionEpoch)return;
     const files=new Map<string,string>(),documents=new Map<string,vscode.TextDocument>();
     for(const file of new Set(plan.steps.map(s=>s.file))){const result=await source(root,file);if(epoch!==sessionEpoch)return;files.set(file,result.text);documents.set(file,result.document);}
     validatePlanAgainstFiles(plan,files);
@@ -116,9 +121,12 @@ export function activate(context:vscode.ExtensionContext){
     const first=plan.steps[0],{document,text}=await source(root,first.file);
     if(epoch!==sessionEpoch)return;
     for(const [file,snapshot]of files)if(documents.get(file)?.getText()!==snapshot)throw Error('수정안을 여는 동안 파일이 바뀌었어요. 다시 열어 주세요.');
-    session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,originalFiles:new Map(files),expectedFiles:files,documents};
+    const current:Session={root,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,originalFiles:new Map(files),expectedFiles:files,documents};session=current;
     await vscode.commands.executeCommand('setContext','typeTheChange.active',true);
-    composer.error='';composer.notice='';panel.show(true);render();await focus(true);
+    if(session!==current||epoch!==sessionEpoch)return;
+    composer.error='';composer.notice='';render();await focus(true);
+    // Establish the native source group before moving a home panel out of it.
+    if(session!==current||epoch!==sessionEpoch)return;panel.show(true);
   }
   async function next(){
     if(!session||session.complete)return;
@@ -291,8 +299,8 @@ export function activate(context:vscode.ExtensionContext){
       // Reconcile before rendering recovery controls, without losing the
       // original failure if SecretStorage itself is temporarily unavailable.
       try{composer.connected=(await auth.status()).planAccess;}catch{}
-      const fileErrors:Record<string,string>={unsafe_path:'작업 폴더 안의 소스 파일을 선택하세요.',missing_file:'파일을 찾을 수 없어요.',not_regular_file:'일반 텍스트 파일을 선택하세요.',too_large:'파일은 64 KiB 이하로 선택하세요.',invalid_text:'UTF-8 텍스트 파일을 선택하세요.',unavailable:'파일을 읽을 수 없어요.'};
-      composer.error=error instanceof AuthError&&error.oauthCode==='invalid_grant'?'ChatGPT 연결이 만료됐어요. 다시 연결해 주세요.':error instanceof WorkspaceFileError?fileErrors[error.code]:error instanceof Error?error.message:'완료하지 못했어요. 다시 시도해 주세요.';
+      const fileErrors:Record<string,string>={unsafe_path:'작업 폴더 안의 소스 파일을 선택하세요.',missing_file:'파일을 찾을 수 없어요.',not_regular_file:'일반 텍스트 파일을 선택하세요.',too_large:'파일은 64 KiB 이하로 선택하세요.',invalid_text:'UTF-8 텍스트 파일을 선택하세요.',duplicate_file:'같은 파일이 여러 경로로 포함됐어요. 파일마다 하나의 경로를 사용해 주세요.',unavailable:'파일을 읽을 수 없어요.'};
+      composer.error=error instanceof AuthError&&error.requiresSignIn?'ChatGPT 연결이 만료됐어요. 다시 연결해 주세요.':error instanceof WorkspaceFileError?fileErrors[error.code]:error instanceof Error?error.message:'완료하지 못했어요. 다시 시도해 주세요.';
       panel.show(true);render();
       if(error instanceof InferenceError&&error.usageLimited){if(await vscode.window.showErrorMessage(composer.error,'사용량'))await guard(usage);}
     }

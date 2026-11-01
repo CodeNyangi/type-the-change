@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -58,6 +58,32 @@ test('MCP proposal writes guidance only; wrong anchors cannot replace the pendin
   assert.equal(rejected.isError, true);
   assert.equal(data(rejected).reason, 'source_does_not_match');
   assert.equal(await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8'), pending);
+});
+
+test('MCP rejects a proposal that would grow beyond the readable file limit without replacing pending guidance', async t => {
+  const { root, client } = await setup(t);
+  await client.callTool({ name: 'propose_typing_plan', arguments: { plan } });
+  const pending = await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8');
+  const original = 'x'.repeat(65_530) + 'a';
+  await writeFile(join(root, 'large.ts'), original);
+  const oversized = { ...plan, steps: [{ file: 'large.ts', before: 'a', after: '가나!', reason: 'Expand the label.' }] };
+  const rejected = await client.callTool({ name: 'propose_typing_plan', arguments: { plan: oversized } });
+  assert.equal(rejected.isError, true);
+  assert.equal(await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8'), pending);
+  assert.equal(await readFile(join(root, 'large.ts'), 'utf8'), original);
+});
+
+test('MCP rejects distinct paths for the same physical source before replacing pending guidance', async t => {
+  const { root, client } = await setup(t);
+  await client.callTool({ name: 'propose_typing_plan', arguments: { plan } });
+  const pending = await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8');
+  await link(join(root, 'example.ts'), join(root, 'alias.ts'));
+  const aliased = { ...plan, steps: [plan.steps[0], { ...plan.steps[0], file: 'alias.ts', after: 'answer = 43' }] };
+  const rejected = await client.callTool({ name: 'propose_typing_plan', arguments: { plan: aliased } });
+  assert.equal(rejected.isError, true);
+  assert.equal(data(rejected).reason, 'duplicate_file');
+  assert.equal(await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8'), pending);
+  assert.equal(await readFile(join(root, 'example.ts'), 'utf8'), 'export const answer = 41;\n');
 });
 
 test('MCP path failures expose neither external file contents nor absolute paths', async t => {

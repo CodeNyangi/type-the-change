@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, mock, test } from 'node:test';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { ChatGPTAuth, buildAuthorizationUrl, createPkce, grantedPlanAccess, validateCallback, type SecretStore } from '../src/auth.js';
+import { createAccountLock, type AccountLock } from '../src/account-lock.js';
 
 const ISSUER = 'https://auth.openai.com';
 const ACCOUNT = 'typeTheChange.chatgpt.account.v1';
@@ -31,6 +35,9 @@ async function idToken(nonce: string, subject = 'subject-1', audience = CLIENT) 
 function fixture(options: {
   scope?: string; nonce?: string; subject?: string; audience?: string;
   refreshError?: boolean; revokeError?: boolean; preventCallback?: boolean;
+  refreshErrorCode?: string; refreshErrorStatus?: number;
+  refreshOverrides?: Record<string, unknown>;
+  lockAccount?: AccountLock;
   authorizationErrorOnce?: boolean;
   invalidSignature?: boolean;
   tokenOverrides?: Record<string,unknown>;
@@ -63,8 +70,8 @@ function fixture(options: {
       if (form.get('grant_type') === 'refresh_token') {
         assert.equal(form.has('scope'), false);
         await new Promise(resolve => setTimeout(resolve, 10));
-        if (options.refreshError) return Response.json({ error: 'invalid_grant', error_description: 'secret-must-not-appear' }, { status: 400 });
-        return Response.json({ access_token: 'refreshed-access', refresh_token: 'rotated-refresh', token_type: 'Bearer', expires_in: 3600, ...(options.refreshScopes===undefined?{}:{scope:options.refreshScopes}) });
+        if (options.refreshError || options.refreshErrorCode) return Response.json({ error: options.refreshErrorCode ?? 'invalid_grant', error_description: 'secret-must-not-appear' }, { status: options.refreshErrorStatus ?? 400 });
+        return Response.json({ access_token: 'refreshed-access', refresh_token: 'rotated-refresh', token_type: 'Bearer', expires_in: 3600, ...(options.refreshScopes===undefined?{}:{scope:options.refreshScopes}), ...options.refreshOverrides });
       }
       const current = authorizations.at(-1)!;
       if (options.authorizationErrorOnce) {
@@ -89,7 +96,7 @@ function fixture(options: {
     assert.fail(`Unexpected URL in test: ${url}`);
   });
   const auth = new ChatGPTAuth({
-    secrets, appName: 'Type the Change',
+    secrets, appName: 'Type the Change', lockAccount: options.lockAccount,
     openExternal: async raw => {
       const url = new URL(raw);
       authorizations.push(url);
@@ -265,6 +272,51 @@ test('refresh is coalesced, preserves omitted scope, and stores rotated credenti
   assert.deepEqual(await auth.status(), { signedIn: true, planAccess: true });
 });
 
+test('independent hosts reload shared credentials under the lock and refresh only once', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ttc-auth-hosts-'));
+  try {
+    const { auth, secrets, requests } = fixture({ lockAccount: createAccountLock(root) });
+    await auth.signIn(); secrets.expire();
+    const second = new ChatGPTAuth({ secrets, appName: 'Type the Change', lockAccount: createAccountLock(root), openExternal: async () => assert.fail('No browser expected') });
+    const tokens = await Promise.all([auth.getAccessToken(), second.getAccessToken(), auth.getAccessToken(), second.getAccessToken()]);
+    assert.deepEqual(new Set(tokens), new Set(['refreshed-access']));
+    assert.equal(requests.filter(request => request.form.get('grant_type') === 'refresh_token').length, 1);
+    assert.equal(secrets.account().refreshToken, 'rotated-refresh');
+    assert.deepEqual(await second.status(), { signedIn: true, planAccess: true });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('another host signs out after refresh and cannot resurrect the revoked session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ttc-auth-hosts-'));
+  try {
+    const { auth, secrets, requests } = fixture({ lockAccount: createAccountLock(root) });
+    await auth.signIn(); secrets.expire();
+    const second = new ChatGPTAuth({ secrets, appName: 'Type the Change', lockAccount: createAccountLock(root), openExternal: async () => assert.fail('No browser expected') });
+    const refreshing = auth.getAccessToken();
+    while (!requests.some(request => request.form.get('grant_type') === 'refresh_token')) await new Promise(resolve => setTimeout(resolve, 1));
+    await second.signOut();
+    assert.equal(await refreshing, 'refreshed-access');
+    assert.equal(requests.find(request => request.url.endsWith('/revoke'))!.form.get('token'), 'rotated-refresh');
+    assert.deepEqual(await auth.status(), { signedIn: false, planAccess: false });
+    const calls = requests.length;
+    await assert.rejects(auth.getAccessToken(), /Continue with ChatGPT/);
+    assert.equal(requests.length, calls);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('sign-in cancelled while another host holds the lock never starts authorization', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ttc-auth-hosts-'));
+  const release = await createAccountLock(root)();
+  try {
+    const { auth, secrets, requests } = fixture({ lockAccount: createAccountLock(root) });
+    const controller = new AbortController();
+    const pending = auth.signIn(controller.signal);
+    controller.abort();
+    await assert.rejects(pending, error => error instanceof Error && error.name === 'AbortError');
+    assert.equal(requests.length, 0); assert.equal(secrets.values.size, 0);
+  } finally { await release(); await rm(root, { recursive: true, force: true }); }
+});
+
 test('invalid refresh clears session tokens and never exposes provider error bodies', async () => {
   const { auth, secrets } = fixture({ refreshError: true });
   await auth.signIn();
@@ -278,6 +330,62 @@ test('invalid refresh clears session tokens and never exposes provider error bod
   assert.equal(secrets.account().refreshToken, undefined);
   assert.equal(secrets.account().clientId, CLIENT);
   assert.deepEqual(await auth.status(), { signedIn: false, planAccess: false });
+});
+
+for (const code of ['invalid_refresh_token', 'token_expired', 'refresh_token_expired', 'refresh_token_invalidated', 'refresh_token_reused']) {
+  test(`terminal refresh error ${code} clears only session credentials and permits reauthorization`, async () => {
+    const { auth, secrets, requests, authorizations } = fixture({ refreshErrorCode: code });
+    await auth.signIn();
+    const host = secrets.values.get(HOST);
+    secrets.expire();
+    await assert.rejects(auth.getAccessToken(), error => {
+      assert.match(String(error), /Sign in again/);
+      assert.doesNotMatch(String(error), /secret-must-not-appear/);
+      return true;
+    });
+    assert.deepEqual(await auth.status(), { signedIn: false, planAccess: false });
+    const account = secrets.account();
+    for (const field of ['idToken', 'accessToken', 'refreshToken', 'expiresAt']) assert.equal(account[field], undefined);
+    assert.equal(account.clientId, CLIENT);
+    assert.equal(account.subject, 'subject-1');
+    assert.equal(secrets.values.get(HOST), host);
+    const calls = requests.length;
+    await assert.rejects(auth.getAccessToken(), /Continue with ChatGPT/);
+    assert.equal(requests.length, calls);
+    await auth.signIn();
+    assert.equal(authorizations.at(-1)!.searchParams.get('client_id'), CLIENT);
+  });
+}
+
+test('temporary or configuration refresh failures preserve credentials for recovery', async () => {
+  for (const [code, status] of [['temporarily_unavailable', 503], ['rate_limit_exceeded', 429], ['invalid_client', 400]] as const) {
+    const { auth, secrets } = fixture({ refreshErrorCode: code, refreshErrorStatus: status });
+    await auth.signIn();
+    secrets.expire();
+    const saved = secrets.values.get(ACCOUNT);
+    await assert.rejects(auth.getAccessToken(), /authentication failed/);
+    assert.equal(secrets.values.get(ACCOUNT), saved);
+    mock.restoreAll();
+  }
+});
+
+test('refreshed identity cannot change the account, audience, or original nonce', async () => {
+  for (const mismatch of ['subject', 'audience', 'nonce']) {
+    const options: { refreshOverrides?: Record<string, unknown> } = {};
+    const { auth, secrets } = fixture(options);
+    await auth.signIn();
+    secrets.expire();
+    const saved = secrets.values.get(ACCOUNT);
+    const account = secrets.account();
+    options.refreshOverrides = { id_token: await idToken(
+      mismatch === 'nonce' ? 'unrelated-nonce' : String(account.nonce),
+      mismatch === 'subject' ? 'different-subject' : 'subject-1',
+      mismatch === 'audience' ? 'oaiapp_different' : CLIENT,
+    ) };
+    await assert.rejects(auth.getAccessToken(), /Could not verify/);
+    assert.equal(secrets.values.get(ACCOUNT), saved);
+    mock.restoreAll();
+  }
 });
 
 test('cancelled refresh caller does not discard the rotating replacement token', async () => {

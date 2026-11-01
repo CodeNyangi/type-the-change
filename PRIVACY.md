@@ -6,6 +6,8 @@ Type the Change has no application backend, analytics, advertising, or telemetry
 
 Sign-in opens OpenAI's official authorization page in your browser and receives its callback on a temporary loopback server bound to `127.0.0.1`. OAuth credentials, a stable installation host ID, and the registered client/account binding are stored in VS Code SecretStorage, not the project. A one-time welcome flag and your selected model are stored in extension global state. The webview keeps the current request draft in its local VS Code webview state.
 
+Local VS Code windows coordinate account changes through a lock in the extension's global storage directory. This lock contains only an owner process ID and a random marker, never credentials or source code. It is removed after the operation; a later request can recover a lock whose owner process has exited.
+
 When you request a plan, the extension sends your written intent and the current contents of the files you explicitly selected to OpenAI. Unsaved editor contents are included. It also requests the model list available to your connected account. It does not scan or upload the entire workspace. Requests set `store: false`; OpenAI's service terms and data handling still apply.
 
 The extension does not log tokens or read credentials from ChatGPT, Codex, or another extension. Sign Out attempts remote revocation and removes local session credentials. The installation/client registration and account binding remain, as required by the registration flow. If remote revocation fails, the extension reports that it could not confirm revocation.
