@@ -47,11 +47,11 @@ export class TaskChecks implements vscode.Disposable {
     const running={execution:undefined as vscode.TaskExecution|undefined,cancelled:false,finish:settle};this.running=running;
     const processEnd=(event:vscode.TaskProcessEndEvent)=>{
       if(!execution){if(early.size<64)early.set(event.execution,{...early.get(event.execution),process:true,code:event.exitCode});return;}
-      if(event.execution===execution){code=event.exitCode;ended=true;settle();}
+      if(event.execution===execution){code=event.exitCode;ended=true;clearTimeout(timer);timer=setTimeout(settle,500);}
     };
     const taskEnd=(event:vscode.TaskEndEvent)=>{
       if(!execution){if(early.size<64)early.set(event.execution,{...early.get(event.execution),ended:true});return;}
-      if(event.execution===execution&&!ended)timer=setTimeout(settle,100);
+      if(event.execution===execution){clearTimeout(timer);if(ended)settle();else timer=setTimeout(settle,100);}
     };
     const subscriptions=[vscode.tasks.onDidEndTaskProcess(processEnd),vscode.tasks.onDidEndTask(taskEnd)];
     report({task:task.name,status:'running',sourceHash:hash,durationMs:0,details:[]});
@@ -61,7 +61,7 @@ export class TaskChecks implements vscode.Disposable {
       task.presentationOptions={...task.presentationOptions,reveal:vscode.TaskRevealKind.Never,focus:false,showReuseMessage:false};
       execution=await vscode.tasks.executeTask(task);running.execution=execution;
       if(running.cancelled)execution.terminate();
-      const event=early.get(execution);if(event?.process){code=event.code;ended=true;settle();}else if(event?.ended)timer=setTimeout(settle,100);
+      const event=early.get(execution);if(event?.process){code=event.code;ended=true;if(event.ended)settle();else timer=setTimeout(settle,500);}else if(event?.ended)timer=setTimeout(settle,100);
       early.clear();await finished;
       return completedCheck(task.name,hash,code,Date.now()-start,isStale(),running.cancelled);
     }catch{

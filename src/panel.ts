@@ -29,6 +29,10 @@ export class GuidePanel implements vscode.Disposable {
   }
   update(state:PanelState){this.state=state;if(!state.file)this.pendingFocus=undefined;void this.panel?.webview.postMessage(state);}
   focusIntent(){void this.panel?.webview.postMessage({type:'focusIntent'});}
-  focusStep(){this.pendingFocus='focusStep';this.show();void this.panel?.webview.postMessage({type:'focusStep'});}
+  async focusStep(){
+    this.pendingFocus='focusStep';this.show();
+    await vscode.commands.executeCommand('workbench.action.focusSecondEditorGroup');
+    if(this.state.file)void this.panel?.webview.postMessage({type:'focusStep'});
+  }
   dispose(){this.panel?.dispose();}
 }

@@ -318,8 +318,9 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
     assert.equal(sequence.document.getText(vscode.window.visibleTextEditors.find(editor=>editor.document.uri.toString()===sequence.document.uri.toString())!.selection),'return amount;','the second same-file replacement is selected without a mouse');
     await api.predict('Negative amounts become zero; positive amounts remain unchanged.');
+    await assertGuideBesideSource(path.join(root,'native-sequence.ts'),true);
     await typeCharacters('return Math.max(0, amount);');
-    assert.equal(api.getState()?.status,'matched');await acceptMatched(api);assert.equal(api.getState()?.complete,true);
+    assert.equal(api.getState()?.status,'matched',`second step buffer: ${sequence.document.getText()}`);await acceptMatched(api);assert.equal(api.getState()?.complete,true);
     assert.equal(await readFile(path.join(root,'native-sequence.ts'),'utf8'),sequenceOriginal);await api.stop();
   }finally{
     await api.stop();

@@ -119,6 +119,10 @@ export function activate(context:vscode.ExtensionContext){
       editor.selection=select?new vscode.Selection(start,end):new vscode.Selection(end,end);
       editor.revealRange(new vscode.Range(start,end),vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
+    // A panel reveal and TextDocument activation travel on different RPC paths.
+    // Finish the explicit return-to-code action in the workbench before typing.
+    await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+    if(session!==s)return;
     render();
   }
   async function startPlan(plan:Plan,root:string,requestEpoch?:number){
@@ -137,7 +141,7 @@ export function activate(context:vscode.ExtensionContext){
     if(session!==current||epoch!==sessionEpoch)return;
     composer.error='';composer.notice='';render();await focus(true);
     // Establish the native source group before moving a home panel out of it.
-    if(session!==current||epoch!==sessionEpoch)return;current.ready=true;render();panel.focusStep();
+    if(session!==current||epoch!==sessionEpoch)return;current.ready=true;render();await panel.focusStep();
   }
   async function next(){
     if(!session)return;
@@ -147,17 +151,17 @@ export function activate(context:vscode.ExtensionContext){
   async function makePrediction(value:unknown){if(session?.ready){predict(session.judgment,value);render();await focus();}}
   async function advance(){
     if(!session?.ready)return;
-    if(session.judgment.phase==='predict'||session.judgment.phase==='review'||session.judgment.phase==='done'){panel.focusStep();return;}
+    if(session.judgment.phase==='predict'||session.judgment.phase==='review'||session.judgment.phase==='done'){await panel.focusStep();return;}
     await runCheck();
   }
   async function chooseCheck(){const s=session;if(!s||s.checking)return;await checks.select(s.root,true,s.demoTask);}
   async function runCheck(){
     const s=session;if(!s||s.checking)return;
-    if(!s.judgment.prediction){panel.focusStep();return;}
+    if(!s.judgment.prediction){await panel.focusStep();return;}
     s.checking=true;render();
     try{
       const task=await checks.select(s.root,false,s.demoTask);if(session!==s||!task)return;
-      if(task==='compare'){await review();if(session===s)panel.focusStep();return;}
+      if(task==='compare'){await review();if(session===s)await panel.focusStep();return;}
       if(!await refreshSessionDocuments(s))return;
       // This action is explicitly labelled Save and Check. Save only the files
       // in this review, never unrelated dirty work in another editor.
@@ -170,11 +174,14 @@ export function activate(context:vscode.ExtensionContext){
       const result=await checks.run(task,hash,()=>session!==s||s.revision!==revision||sourceHash(s)!==hash,result=>{if(session===s){s.check=result;render();}});
       if(session!==s)return;
       if(result.status==='passed'||result.status==='failed'){
-        result.details=[...s.documents.values()].flatMap(document=>vscode.languages.getDiagnostics(document.uri).filter(diagnostic=>diagnostic.severity===vscode.DiagnosticSeverity.Error).map(diagnostic=>`${path.basename(document.uri.fsPath)}:${diagnostic.range.start.line+1} ${diagnostic.message.slice(0,350)}`)).slice(0,5);
+        result.details=checkDetails(s);
       }
       s.check=result;render();
-      if(['passed','failed','unknown'].includes(result.status)){await review();if(session===s)panel.focusStep();}
+      if(['passed','failed','unknown'].includes(result.status)){await review();if(session===s)await panel.focusStep();}
     }finally{if(session===s){s.checking=false;render();}}
+  }
+  function checkDetails(s:Session){
+    return [...s.documents.values()].flatMap(document=>vscode.languages.getDiagnostics(document.uri).filter(diagnostic=>diagnostic.severity===vscode.DiagnosticSeverity.Error).map(diagnostic=>`${path.basename(document.uri.fsPath)}:${diagnostic.range.start.line+1} ${diagnostic.message.slice(0,350)}`)).slice(0,5);
   }
   async function makeDecision(value:{decision?:unknown;evidence?:unknown}){
     const s=session;if(!s||s.deciding)return;s.deciding=true;
@@ -200,7 +207,7 @@ export function activate(context:vscode.ExtensionContext){
         validatePlanAgainstFiles({...s.plan,steps:s.plan.steps.slice(index)},files);
         resolved=resolveStep(s.documents.get(step.file)!.getText(),step);
       }catch{s.replan=true;render();return;}
-      session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),check:undefined,deciding:false};render();await focus(true);panel.focusStep();
+      session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),check:undefined,deciding:false};render();await focus(true);await panel.focusStep();
     }finally{s.deciding=false;}
   }
   async function stop(){
@@ -385,6 +392,10 @@ export function activate(context:vscode.ExtensionContext){
     void refreshSessionDocuments(current).then(fresh=>{if(fresh)render();}).catch(()=>{});
   }));
   context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(()=>render()));
+  if(vscode.languages?.onDidChangeDiagnostics)context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(event=>{
+    const s=session;if(!s?.check||!['passed','failed'].includes(s.check.status)||s.check.sourceHash!==sourceHash(s))return;
+    if(event.uris.some(uri=>[...s.documents.values()].some(document=>document.uri.toString()===uri.toString()))){s.check={...s.check,details:checkDetails(s)};render();}
+  }));
   const watcher=vscode.workspace.createFileSystemWatcher('**/.type-the-change/plan.json');
   const noticeTimers=new Map<string,NodeJS.Timeout>();
   const notice=(uri:vscode.Uri)=>{
