@@ -3,7 +3,15 @@ import { lstat, mkdir, mkdtemp, readdir, rename, rmdir, unlink, writeFile } from
 import { isAbsolute, join } from 'node:path';
 
 export type AccountLock = (signal?: AbortSignal) => Promise<() => Promise<void>>;
-export class AccountLockError extends Error {}
+export class AccountLockError extends Error {
+  constructor(message: string, error?: unknown) {
+    const reason = code(error);
+    const syscall = error instanceof Error && 'syscall' in error && typeof error.syscall === 'string' &&
+      ['rename', 'lstat', 'scandir', 'rmdir', 'unlink', 'mkdir', 'open', 'write', 'kill'].includes(error.syscall) ? error.syscall : undefined;
+    // Keep only known diagnostic fields, never raw paths or error messages.
+    super(message, reason && /^E[A-Z0-9]{1,24}$/.test(reason) ? { cause: { code: reason, ...(syscall ? { syscall } : {}) } } : undefined);
+  }
+}
 const OWNER = /^([1-9][0-9]*)-[0-9a-f-]{36}\.owner$/;
 
 function code(error: unknown): string | undefined {
@@ -77,6 +85,7 @@ export function createAccountLock(storageDirectory: string, waitMilliseconds = 2
       const until = Date.now() + waitMilliseconds;
       for (;;) {
         checkAborted(signal);
+        let vanishedDestinationError: unknown;
         try {
           // Publish an already nonempty directory atomically. A live owner's
           // nonempty directory cannot be replaced, including after long sleep.
@@ -87,7 +96,7 @@ export function createAccountLock(storageDirectory: string, waitMilliseconds = 2
             if (released) return;
             released = true;
             try { await removeOwnedDirectory(lockDirectory, marker); }
-            catch { throw new AccountLockError('ChatGPT 연결 잠금을 해제하지 못했어요. VS Code를 다시 시작해 주세요.'); }
+            catch (error) { throw new AccountLockError('ChatGPT 연결 잠금을 해제하지 못했어요. VS Code를 다시 시작해 주세요.', error); }
           };
           if (signal?.aborted) { await release(); checkAborted(signal); }
           return release;
@@ -96,17 +105,27 @@ export function createAccountLock(storageDirectory: string, waitMilliseconds = 2
           if (!['EEXIST', 'ENOTEMPTY', 'EPERM', 'EACCES'].includes(reason ?? '')) throw error;
           if (reason === 'EPERM' || reason === 'EACCES') {
             // Windows can report access denied for an occupied destination.
-            // Do not retry an unrelated permission failure with no lock there.
-            try { await lstat(lockDirectory); } catch { throw error; }
+            // A concurrent releaser may remove that destination before lstat.
+            // Retry ENOENT within the same deadline; other inspection failures
+            // remain errors. Persistent denial without a destination is still
+            // reported as a storage error when the bounded wait expires.
+            try { await lstat(lockDirectory); }
+            catch (inspectionError) {
+              if (code(inspectionError) !== 'ENOENT') throw inspectionError;
+              vanishedDestinationError = error;
+            }
           }
         }
         await recoverDeadOwner(lockDirectory);
-        if (Date.now() >= until) throw new AccountLockError('다른 VS Code 창에서 ChatGPT 연결을 처리하고 있어요. 잠시 후 다시 시도해 주세요.');
+        if (Date.now() >= until) {
+          if (vanishedDestinationError) throw vanishedDestinationError;
+          throw new AccountLockError('다른 VS Code 창에서 ChatGPT 연결을 처리하고 있어요. 잠시 후 다시 시도해 주세요.');
+        }
         await pause(signal);
       }
     } catch (error) {
       if (error instanceof AccountLockError || (error instanceof Error && error.name === 'AbortError')) throw error;
-      throw new AccountLockError('ChatGPT 연결 저장소를 사용할 수 없어요. 다시 시도해 주세요.');
+      throw new AccountLockError('ChatGPT 연결 저장소를 사용할 수 없어요. 다시 시도해 주세요.', error);
     } finally {
       if (candidate) {
         // Only this attempt's private candidate; never recursively remove a lock.

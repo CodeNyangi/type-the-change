@@ -1,13 +1,17 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import type { PathLike } from 'node:fs';
+import fs, { mkdtemp, mkdir, readdir, rm, utimes, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { AccountLockError, createAccountLock } from '../src/account-lock.js';
 
 const moduleUrl = new URL('../src/account-lock.ts', import.meta.url).href;
+const stressRepeats = Number(process.env.TTC_LOCK_STRESS_REPEATS ?? 1);
+assert.ok(Number.isInteger(stressRepeats) && stressRepeats >= 1 && stressRepeats <= 20, 'TTC_LOCK_STRESS_REPEATS must be an integer from 1 to 20');
 const childSource = `
   const { createAccountLock } = await import(process.argv[1]);
   const release = await createAccountLock(process.argv[2])();
@@ -67,7 +71,8 @@ test('a live owner is never replaced solely because its lock is old', { timeout:
   } finally { await held.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test('a killed owner is recovered safely by racing successor processes', { timeout: 10_000 }, async () => {
+test('a killed owner is recovered safely by racing successor processes', { timeout: 60_000 }, async () => {
+ for (let round = 0; round < stressRepeats; round++) {
   const root = await mkdtemp(join(tmpdir(), 'ttc-account-lock-'));
   const killed = owner(root);
   let successors: ReturnType<typeof owner>[] = [];
@@ -86,6 +91,60 @@ test('a killed owner is recovered safely by racing successor processes', { timeo
     }
     assert.deepEqual(await readdir(root), []);
   } finally { await killed.close(); for (const child of successors) await child.close(); await rm(root, { recursive: true, force: true }); }
+ }
+});
+
+for (const reason of ['EPERM', 'EACCES']) {
+  test(`${reason} contention retries when another process removes the lock before inspection`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ttc-account-lock-'));
+    const lockPath = join(root, 'chatgpt-account.lock');
+    await mkdir(lockPath);
+    const actualRename = fs.rename;
+    let attempts = 0;
+    const renameMock = mock.method(fs, 'rename', async (source: PathLike, target: PathLike) => {
+      attempts++;
+      if (attempts === 1) {
+        // Windows rename already observed the occupied directory. A different
+        // recovery process removes it before this caller can inspect it.
+        await fs.rmdir(lockPath);
+        throw Object.assign(new Error('private-filesystem-detail'), { code: reason });
+      }
+      return actualRename(source, target);
+    });
+    syncBuiltinESMExports();
+    try {
+      const release = await createAccountLock(root, 1_000)();
+      assert.equal(attempts, 2);
+      await release();
+      assert.deepEqual(await readdir(root), []);
+    } finally {
+      renameMock.mock.restore(); syncBuiltinESMExports();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('persistent permission denial remains bounded and exposes only its safe code', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'ttc-account-lock-'));
+  let attempts = 0;
+  const renameMock = mock.method(fs, 'rename', async () => {
+    attempts++;
+    throw Object.assign(new Error('private-filesystem-detail /private/user-storage'), { code: 'EACCES', syscall: 'rename' });
+  });
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(createAccountLock(root, 100)(), error => {
+      assert.ok(error instanceof AccountLockError);
+      assert.deepEqual(error.cause, { code: 'EACCES', syscall: 'rename' });
+      assert.doesNotMatch(String(error) + JSON.stringify(error.cause), /private-filesystem|user-storage/);
+      return true;
+    });
+    assert.ok(attempts >= 2, 'permission failure was retried within the deadline');
+    assert.deepEqual(await readdir(root), []);
+  } finally {
+    renameMock.mock.restore(); syncBuiltinESMExports();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('malformed locks fail closed and cancellation leaves no candidate directories', async () => {

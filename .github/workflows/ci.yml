@@ -85,6 +85,8 @@ jobs:
     name: Windows core
     runs-on: windows-latest
     timeout-minutes: 15
+    env:
+      TTC_LOCK_STRESS_REPEATS: '20'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
