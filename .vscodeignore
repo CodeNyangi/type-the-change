@@ -1,0 +1,12 @@
+**/*
+!package.json
+!README.md
+!README.ko.md
+!LICENSE
+!CHANGELOG.md
+!PRIVACY.md
+!THIRD_PARTY_NOTICES
+!plan.schema.json
+!dist/extension.cjs
+!dist/mcp-server.cjs
+!examples/**

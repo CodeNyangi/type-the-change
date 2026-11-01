@@ -1,0 +1,11 @@
+{
+  "version":1,
+  "title":"음수 가격을 합계에서 제외하기",
+  "intent":"잘못 들어온 음수 가격은 합계에 더하지 않는다.",
+  "steps":[{
+    "file":"price.ts",
+    "before":"    result += price;",
+    "after":"    if (price >= 0) {\n      result += price;\n    }",
+    "reason":"0 이상의 가격만 합계에 포함합니다. 빈 배열과 0원 가격의 동작도 확인해 보세요."
+  }]
+}

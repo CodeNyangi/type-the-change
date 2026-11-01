@@ -1,0 +1,10 @@
+node_modules/
+dist/
+artifacts/
+.vscode-test/
+.type-the-change/
+.env*
+*.log
+.DS_Store
+test-results/
+demo-workspace/
