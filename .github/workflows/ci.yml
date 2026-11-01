@@ -76,4 +76,4 @@ jobs:
       - name: Require successful dependencies
         env:
           NEEDS: ${{ toJSON(needs) }}
-      run: node .github/scripts/check-ci-results.mjs check ui
+        run: node .github/scripts/check-ci-results.mjs check ui
