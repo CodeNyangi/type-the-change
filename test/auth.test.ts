@@ -33,6 +33,8 @@ function fixture(options: {
   refreshError?: boolean; revokeError?: boolean; preventCallback?: boolean;
   authorizationErrorOnce?: boolean;
   invalidSignature?: boolean;
+  tokenOverrides?: Record<string,unknown>;
+  refreshScopes?: string;
 } = {}) {
   const secrets = new MemorySecrets();
   const requests: { url: string; form: URLSearchParams }[] = [];
@@ -62,7 +64,7 @@ function fixture(options: {
         assert.equal(form.has('scope'), false);
         await new Promise(resolve => setTimeout(resolve, 10));
         if (options.refreshError) return Response.json({ error: 'invalid_grant', error_description: 'secret-must-not-appear' }, { status: 400 });
-        return Response.json({ access_token: 'refreshed-access', refresh_token: 'rotated-refresh', token_type: 'Bearer', expires_in: 3600 });
+        return Response.json({ access_token: 'refreshed-access', refresh_token: 'rotated-refresh', token_type: 'Bearer', expires_in: 3600, ...(options.refreshScopes===undefined?{}:{scope:options.refreshScopes}) });
       }
       const current = authorizations.at(-1)!;
       if (options.authorizationErrorOnce) {
@@ -81,6 +83,7 @@ function fixture(options: {
         id_token: identity,
         access_token: 'test-access', refresh_token: 'test-refresh', token_type: 'Bearer', expires_in: 3600,
         scope: options.scope ?? PLAN_SCOPE,
+        ...options.tokenOverrides,
       });
     }
     assert.fail(`Unexpected URL in test: ${url}`);
@@ -324,4 +327,77 @@ test('discovery refuses substituted endpoints before opening a browser', async (
   const auth = new ChatGPTAuth({ secrets: new MemorySecrets(), appName: 'Type the Change', openExternal: async () => { opened = true; return true; } });
   await assert.rejects(auth.signIn(), /configuration changed/);
   assert.equal(opened, false);
+});
+
+test('pre-cancelled auth does not contact OpenAI or open a callback listener',async()=>{
+ const {auth,secrets,requests}=fixture();const controller=new AbortController();controller.abort();
+ await assert.rejects(auth.signIn(controller.signal),error=>error instanceof Error&&error.name==='AbortError');
+ assert.equal(requests.length,0);assert.equal(secrets.values.size,0);
+});
+
+test('declined sign-in never exchanges a code and closes the callback listener',async()=>{
+ const {auth,opened,requests,secrets}=fixture({preventCallback:true});
+ const pending=auth.signIn();const rejected=assert.rejects(pending,/not completed/);const url=await opened;
+ const callback=new URL(url.searchParams.get('redirect_uri')!);callback.searchParams.set('state',url.searchParams.get('state')!);callback.searchParams.set('error','access_denied');
+ assert.equal((await realFetch(callback)).status,400);await rejected;
+ assert.equal(requests.some(r=>r.url.endsWith('/token')),false);assert.equal(secrets.values.has(ACCOUNT),false);
+ await assert.rejects(realFetch(callback));
+});
+
+test('non-callback requests do not consume a pending login',async()=>{
+ const {auth,opened}=fixture({preventCallback:true});const pending=auth.signIn();const url=await opened;
+ const callback=new URL(url.searchParams.get('redirect_uri')!);callback.searchParams.set('state',url.searchParams.get('state')!);callback.searchParams.set('code','test-code');callback.searchParams.set('client_id',CLIENT);
+ assert.equal((await realFetch(callback,{method:'POST',body:'ignored'})).status,400);
+ const wrongPath=new URL(callback);wrongPath.pathname='/other';assert.equal((await realFetch(wrongPath)).status,400);
+ assert.equal((await realFetch(callback)).status,200);assert.deepEqual(await pending,{planAccess:true});
+});
+
+test('double sign-in is rejected; sign-out cancels the existing browser flow cleanly',async()=>{
+ const {auth,opened,secrets}=fixture({preventCallback:true});const pending=auth.signIn();const rejected=assert.rejects(pending,error=>error instanceof Error&&error.name==='AbortError');
+ const url=await opened;await assert.rejects(auth.signIn(),/in progress/);await auth.signOut();await rejected;
+ assert.deepEqual(await auth.status(),{signedIn:false,planAccess:false});assert.equal(secrets.values.has(ACCOUNT),false);
+ await assert.rejects(realFetch(url.searchParams.get('redirect_uri')!));
+});
+
+test('browser failures are sanitized and close the loopback listener',async()=>{
+ for(const reject of [false,true]){
+  const {secrets}=fixture();let callback='';
+  const auth=new ChatGPTAuth({secrets,appName:'Type the Change',openExternal:async url=>{callback=new URL(url).searchParams.get('redirect_uri')!;if(reject)throw Error('private-id-token-hint');return false;}});
+  await assert.rejects(auth.signIn(),error=>{assert.match(String(error),/Could not open/);assert.doesNotMatch(String(error),/private-id-token/);return true;});
+  await assert.rejects(realFetch(callback));assert.equal(secrets.values.has(ACCOUNT),false);mock.restoreAll();
+ }
+});
+
+test('invalid access token metadata never creates a saved account',async()=>{
+ for(const tokenOverrides of [{expires_in:0},{expires_in:'3600'},{token_type:'MAC'},{access_token:42},{id_token:null}]){
+  const {auth,secrets}=fixture({tokenOverrides});await assert.rejects(auth.signIn());assert.equal(secrets.values.has(ACCOUNT),false);mock.restoreAll();
+ }
+});
+
+test('revoked plan scope is persisted and prevents subsequent inference',async()=>{
+ const {auth,secrets,requests}=fixture({refreshScopes:'openid profile email'});await auth.signIn();secrets.expire();
+ await assert.rejects(auth.getAccessToken(),/permission was removed/);assert.deepEqual(await auth.status(),{signedIn:true,planAccess:false});
+ assert.equal(secrets.account().refreshToken,'rotated-refresh');const calls=requests.length;
+ await assert.rejects(auth.getAccessToken(),/Allow this app/);assert.equal(requests.length,calls);
+});
+
+test('expired non-renewable sessions require a new login without making a refresh request',async()=>{
+ const {auth,secrets,requests}=fixture();await auth.signIn();const account=secrets.account();delete account.refreshToken;account.expiresAt=0;secrets.values.set(ACCOUNT,JSON.stringify(account));
+ const count=requests.length;await assert.rejects(auth.getAccessToken(),/expired/);assert.equal(requests.length,count);
+});
+
+test('sign-out recovers corrupted SecretStorage without pretending remote revocation succeeded',async()=>{
+ const {auth,secrets}=fixture();secrets.values.set(ACCOUNT,'{invalid');
+ await assert.rejects(auth.status(),/saved ChatGPT session is invalid/);
+ await assert.rejects(auth.signOut(),/Signed out locally.*revocation was not confirmed/);
+ assert.equal(secrets.values.has(ACCOUNT),false);assert.deepEqual(await auth.status(),{signedIn:false,planAccess:false});
+ assert.deepEqual(await auth.signIn(),{planAccess:true});
+});
+
+test('cancellation during discovery remains AbortError and does not open a browser',async()=>{
+ let started!:()=>void;const pendingRequest=new Promise<void>(resolve=>{started=resolve;});
+ mock.method(globalThis,'fetch',async(_url:string,init:RequestInit)=>new Promise<Response>((_resolve,reject)=>{started();init.signal!.addEventListener('abort',()=>reject(Error('private-transport-detail')),{once:true});}));
+ let opened=false;const auth=new ChatGPTAuth({secrets:new MemorySecrets(),appName:'Type the Change',openExternal:async()=>{opened=true;return true;}});
+ const controller=new AbortController(),pending=auth.signIn(controller.signal);await pendingRequest;controller.abort();
+ await assert.rejects(pending,error=>error instanceof Error&&error.name==='AbortError');assert.equal(opened,false);
 });

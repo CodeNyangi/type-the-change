@@ -4,7 +4,7 @@
 
 [한국어](README.ko.md) · [Download VSIX](https://github.com/CodeNyangi/type-the-change/releases) · [Privacy](PRIVACY.md)
 
-A small, open-source VS Code extension for reading a proposed change closely enough to write it yourself. Inspired by Sai's deliberate typing experience and the bounded, tool-based interaction of the Unsecat MCP project.
+A standalone, open-source VS Code extension for reading a proposed change closely enough to write it yourself. The direct ChatGPT connection does not require Codex Desktop, Codex CLI, or a separate MCP client. Inspired by Sai's deliberate typing experience and the bounded, tool-based interaction of the Unsecat MCP project.
 
 1. Describe a change and select the relevant files, or receive a plan from an MCP client.
 2. The extension opens the exact replacement range, with the proposal beside your editor.
@@ -16,15 +16,15 @@ The extension does not apply or save source changes. It does not intercept typin
 
 Requires local desktop VS Code 1.100 or later. This is an early preview; the interface currently uses Korean.
 
-1. Download `type-the-change-0.1.0.vsix` from [Releases](https://github.com/CodeNyangi/type-the-change/releases).
+1. Download `type-the-change-0.2.0.vsix` from [Releases](https://github.com/CodeNyangi/type-the-change/releases).
 2. In VS Code, run **Extensions: Install from VSIX…** from the command palette.
 3. Run **Type the Change: Try the Demo**. No sign-in is needed for the demo or imported plans.
 
-The demo creates a temporary `price.ts`, selects a line, and shows a small change. Type the replacement, read it, and press the continuation shortcut. **⌘⌥T** / **Ctrl+Alt+T** returns to the current change. Normal editor Undo, selection, and accessibility tools remain available.
+The demo creates a temporary `price.ts`, selects a line, and shows a small change. Type the replacement, read it, and press the continuation shortcut. **⌘⌥T** / **Ctrl+Alt+T** returns to the current change. Normal editor Undo, selection, and accessibility tools remain available. After completion, **변경 확인** opens the original/current diff without applying or saving anything.
 
 ## Use your ChatGPT plan
 
-Run **Type the Change: Plan a Change with ChatGPT**, select up to eight source files, and describe your intent. The first request opens **Continue with ChatGPT** in your browser for account consent. Pick a model from the list available to that account.
+Run **Type the Change: Start**, describe your intent in the panel, select up to eight source files, and choose **수정안 만들기** (or ⌘Enter / Ctrl+Enter). The first request opens **Continue with ChatGPT** in your browser for account consent. The extension uses your remembered model, or the first model in the provider-ordered available list. Use the model button to change it. There is no separate request-input dialog or repeated model picker.
 
 This uses OpenAI's official [Sign in with ChatGPT for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), with your account's eligible plan access and limits. An API key is not required. It is not unlimited or an assurance that every subscription is eligible. Requests display that they consume ChatGPT plan usage; usage can be managed in [ChatGPT settings](https://chatgpt.com/settings/usage).
 
@@ -101,6 +101,8 @@ npm run package
 
 `test:host` runs the extension in an isolated VS Code profile and temporary workspace. On macOS it can use the installed VS Code; otherwise it downloads a pinned VS Code test build. Linux requires a display, for example `xvfb-run -a npm run test:host`. The VSIX is written to `artifacts/`.
 
-Tests cover path boundaries, plan matching and sequential changes, stdio MCP, OAuth state/PKCE/refresh/revocation, cancelled and incomplete inference streams, and real VS Code editor integration. Live account inference is a separate manual check.
+Tests cover every webview command and state transition in a DOM environment, path boundaries, sequential plans, stdio MCP, OAuth state/PKCE/refresh/revocation, inference completion/cancellation, and real VS Code editor integration. Native typing tests use VS Code’s `type` command, including auto-pairs, indentation, CRLF, and deletion. A locked macOS host explicitly skips those keyboard cases; `TTC_REQUIRE_NATIVE_TYPING=1` and non-macOS runners require them. DOM tests do not verify browser pixels or real account consent.
+
+`npm run preview` serves the exact production webview at http://127.0.0.1:8790 with a clearly labelled mock host. It can exercise narrow/light/dark/high-contrast layouts without signing in or sending code. It is a UI test fixture, not a substitute for editor or live-account tests. See [verification coverage](docs/verification.md).
 
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [MIT license](LICENSE) · [Bundled dependency notices](THIRD_PARTY_NOTICES)

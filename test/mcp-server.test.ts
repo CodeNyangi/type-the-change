@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { build } from 'esbuild';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { createTypingMcpServer, parseWorkspaceArgument } from '../src/mcp-server.js';
@@ -66,6 +68,32 @@ test('MCP path failures expose neither external file contents nor absolute paths
   assert.equal(JSON.stringify(result).includes(root), false);
 });
 
+test('MCP preflights sequential multi-file plans without applying any step', async t => {
+  const { root, client } = await setup(t);
+  await writeFile(join(root, 'helper.ts'), 'export const enabled = false;\n');
+  const sequential = {
+    ...plan,
+    steps: [
+      plan.steps[0],
+      { ...plan.steps[0], before: 'answer = 42', after: 'answer = 43' },
+      { file: 'helper.ts', before: 'enabled = false', after: 'enabled = true', reason: 'Enable the feature.' },
+    ],
+  };
+  const response = await client.callTool({ name: 'propose_typing_plan', arguments: { plan: sequential } });
+  assert.equal(response.isError, undefined);
+  assert.equal(data(response).stepCount, 3);
+  assert.deepEqual(data(response).sourceFiles, ['example.ts', 'helper.ts']);
+  assert.equal(data(response).planHash, createHash('sha256').update(JSON.stringify(sequential)).digest('hex'));
+  assert.equal(await readFile(join(root, 'example.ts'), 'utf8'), 'export const answer = 41;\n');
+  assert.equal(await readFile(join(root, 'helper.ts'), 'utf8'), 'export const enabled = false;\n');
+  const pending = await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8');
+  const invalidLater = { ...sequential, steps: [...sequential.steps, { ...plan.steps[0], before: 'answer = 42', after: 'answer = 44' }] };
+  const rejected = await client.callTool({ name: 'propose_typing_plan', arguments: { plan: invalidLater } });
+  assert.equal(rejected.isError, true);
+  assert.equal(data(rejected).reason, 'source_does_not_match');
+  assert.equal(await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8'), pending);
+});
+
 test('typing status is an explicitly dated extension snapshot, not proof of correctness', async t => {
   const { root, client } = await setup(t);
   const empty = await client.callTool({ name: 'get_typing_status', arguments: {} });
@@ -103,4 +131,20 @@ test('standalone stdio entry initializes and reads a file without contaminating 
   await client.connect(transport);
   const response = await client.callTool({ name: 'read_file', arguments: { file: 'example.ts' } });
   assert.equal(data(response).text, 'export const answer = 41;\n');
+});
+
+test('bundled CJS MCP entry accepts a workspace path containing spaces and Korean text', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'type-change 코드 '));
+  const entry = join(root, 'mcp-server.cjs');
+  await writeFile(join(root, 'example.ts'), 'export const answer = 41;\n');
+  await build({ entryPoints: ['src/mcp-server.ts'], outfile: entry, bundle: true, platform: 'node', format: 'cjs', target: 'node22', logLevel: 'silent' });
+  const client = new Client({ name: 'type-change-bundle-test', version: '0.1.0' });
+  t.after(async () => { await client.close(); await rm(root, { recursive: true, force: true }); });
+  const transport = new StdioClientTransport({ command: process.execPath, args: [entry, '--workspace', root], stderr: 'pipe' });
+  await client.connect(transport);
+  const response = await client.callTool({ name: 'read_file', arguments: { file: 'example.ts' } });
+  assert.equal(data(response).text, 'export const answer = 41;\n');
+  const proposal = await client.callTool({ name: 'propose_typing_plan', arguments: { plan } });
+  assert.equal(data(proposal).status, 'proposed');
+  assert.deepEqual(JSON.parse(await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8')), plan);
 });

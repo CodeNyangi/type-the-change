@@ -4,7 +4,7 @@ Type the Change has no application backend, analytics, advertising, or telemetry
 
 ## ChatGPT connection
 
-Sign-in opens OpenAI's official authorization page in your browser and receives its callback on a temporary loopback server bound to `127.0.0.1`. OAuth credentials, a stable installation host ID, and the registered client/account binding are stored in VS Code SecretStorage, not the project. A one-time welcome flag is stored in extension global state.
+Sign-in opens OpenAI's official authorization page in your browser and receives its callback on a temporary loopback server bound to `127.0.0.1`. OAuth credentials, a stable installation host ID, and the registered client/account binding are stored in VS Code SecretStorage, not the project. A one-time welcome flag and your selected model are stored in extension global state. The webview keeps the current request draft in its local VS Code webview state.
 
 When you request a plan, the extension sends your written intent and the current contents of the files you explicitly selected to OpenAI. Unsaved editor contents are included. It also requests the model list available to your connected account. It does not scan or upload the entire workspace. Requests set `store: false`; OpenAI's service terms and data handling still apply.
 

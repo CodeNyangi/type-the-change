@@ -56,6 +56,7 @@ interface Tokens {
 class AuthError extends Error {
   constructor(message: string, readonly oauthCode?: string) { super(message); }
 }
+class InvalidSavedAccountError extends AuthError {}
 
 export function createPkce() {
   const verifier = randomBytes(64).toString('base64url');
@@ -127,15 +128,20 @@ function object(value: unknown): Record<string, unknown> {
 }
 
 function checkAborted(signal?: AbortSignal) {
-  if (signal?.aborted) throw new AuthError('ChatGPT request cancelled.');
+  if (signal?.aborted) throw abortError(signal);
+}
+
+function abortError(signal: AbortSignal): Error {
+  if (signal.reason instanceof Error && signal.reason.name === 'TimeoutError') return new AuthError('OpenAI authentication timed out.');
+  return new DOMException('ChatGPT request cancelled.', 'AbortError');
 }
 
 function deadline(parent: AbortSignal | undefined, milliseconds: number) {
   const controller = new AbortController();
-  const abort = () => controller.abort();
+  const abort = () => controller.abort(parent?.reason);
   if (parent?.aborted) abort();
   else parent?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, milliseconds);
+  const timer = setTimeout(() => controller.abort(new DOMException('Authentication timed out.', 'TimeoutError')), milliseconds);
   timer.unref();
   return {
     controller, signal: controller.signal,
@@ -179,7 +185,7 @@ async function request(url: string, init: RequestInit, signal?: AbortSignal, emp
     if (empty) return undefined;
     try { return JSON.parse(body); } catch { throw new AuthError('Invalid OpenAI response.'); }
   } catch (error) {
-    if (limit.signal.aborted) throw new AuthError(signal?.aborted ? 'ChatGPT request cancelled.' : 'OpenAI authentication timed out.');
+    if (limit.signal.aborted) throw abortError(limit.signal);
     if (error instanceof AuthError) throw error;
     throw new AuthError('Could not contact OpenAI authentication.');
   } finally { limit.dispose(); }
@@ -212,7 +218,7 @@ async function waitWithSignal<T>(promise: Promise<T>, signal?: AbortSignal): Pro
   checkAborted(signal);
   if (!signal) return promise;
   return new Promise<T>((resolve, reject) => {
-    const abort = () => { cleanup(); reject(new AuthError('ChatGPT request cancelled.')); };
+    const abort = () => { cleanup(); reject(abortError(signal)); };
     const cleanup = () => signal.removeEventListener('abort', abort);
     signal.addEventListener('abort', abort, { once: true });
     promise.then(value => { cleanup(); resolve(value); }, error => { cleanup(); reject(error); });
@@ -280,7 +286,15 @@ export class ChatGPTAuth {
     let unconfirmed = false;
     try {
       await Promise.allSettled([this.pendingSignIn, this.pendingRefresh].filter(Boolean));
-      const account = await this.load();
+      let account: Account | undefined;
+      try { account = await this.load(); }
+      catch (error) {
+        if (!(error instanceof InvalidSavedAccountError)) throw error;
+        // Corrupt metadata must not make the only recovery control unusable.
+        // It cannot safely identify a remote session to revoke.
+        await this.options.secrets.delete(ACCOUNT_KEY);
+        unconfirmed = true;
+      }
       if (account?.refreshToken) {
         try {
           await this.discovery();
@@ -313,7 +327,7 @@ export class ChatGPTAuth {
       }
       if (value.expiresAt !== undefined && (typeof value.expiresAt !== 'number' || !Number.isFinite(value.expiresAt))) throw new Error();
       return value as unknown as Account;
-    } catch { throw new AuthError('The saved ChatGPT session is invalid. Remove this extension’s saved account and sign in again.'); }
+    } catch { throw new InvalidSavedAccountError('The saved ChatGPT session is invalid. Sign out and sign in again.'); }
   }
 
   private async discovery(signal?: AbortSignal) {
@@ -348,6 +362,7 @@ export class ChatGPTAuth {
           (payload.azp !== undefined && payload.azp !== clientId)) throw new Error();
       return { subject: payload.sub, email: typeof payload.email === 'string' ? payload.email : undefined, nonce: payload.nonce };
     } catch (error) {
+      checkAborted(signal);
       if (error instanceof AuthError) throw error;
       throw new AuthError('Could not verify the ChatGPT account. Sign in again.');
     }
@@ -408,7 +423,7 @@ export class ChatGPTAuth {
       const address = server.address();
       if (!address || typeof address === 'string') throw new AuthError('Could not start the local sign-in callback.');
       redirectUri = `http://127.0.0.1:${address.port}/auth/callback`;
-      const abort = () => reject(new AuthError('ChatGPT sign-in cancelled or timed out.'));
+      const abort = () => reject(abortError(signal));
       signal.addEventListener('abort', abort, { once: true });
       removeAbort = () => signal.removeEventListener('abort', abort);
       checkAborted(signal);

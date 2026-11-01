@@ -54,7 +54,11 @@ async function checkedPath(root: string, parts: string[], allowMissingLeaf = fal
 }
 
 async function readBoundedFile(root: string, file: string, limit: number): Promise<string> {
-  const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const item = await lstat(file);
+  if (item.isSymbolicLink()) throw new WorkspaceFileError('unsafe_path');
+  if (!item.isFile()) throw new WorkspaceFileError('not_regular_file');
+  // Nonblocking open also covers a regular file replaced by a FIFO after lstat.
+  const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new WorkspaceFileError('not_regular_file');

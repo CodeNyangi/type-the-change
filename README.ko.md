@@ -4,7 +4,7 @@
 
 [English](README.md) · [설치 파일](https://github.com/CodeNyangi/type-the-change/releases)
 
-사이의 ‘직접 따라 쓰며 이해하기’와 운세냥이 MCP의 연결 방식을 코드 수정에 옮겼습니다. AI가 의도를 받아 작은 수정안을 만들고, VS Code에서 해당 부분을 열어 줍니다. 옆에 놓인 제안 코드를 보며 직접 고치고, 내 눈으로 확인합니다.
+Codex 데스크톱이나 CLI 없이 VS Code에서 직접 요청할 수 있습니다. 사이의 ‘직접 따라 쓰며 이해하기’와 운세냥이 MCP의 연결 방식을 코드 수정에 옮겼습니다. AI가 의도를 받아 작은 수정안을 만들고, VS Code에서 해당 부분을 열어 줍니다. 옆에 놓인 제안 코드를 보며 직접 고치고, 내 눈으로 확인합니다.
 
 ## 바로 써보기
 
@@ -18,7 +18,9 @@
 
 ## 내 의도로 수정안 만들기
 
-**Type the Change: Plan a Change with ChatGPT** → 파일 선택 → 원하는 변경 입력 → **Continue with ChatGPT** → 모델 선택.
+**Type the Change: Start** → 화면에서 원하는 변경 입력·파일 선택 → **수정안 만들기**. 요청은 **⌘Enter / Ctrl+Enter**로 보낼 수도 있습니다.
+
+처음 한 번 **Continue with ChatGPT**로 연결합니다. 모델은 이전 선택을 기억하며, 모델 이름을 눌러 바꿀 수 있습니다. 입력을 마치면 **변경 확인**으로 수정 전후를 바로 비교합니다.
 
 API 키 대신 OpenAI의 공식 [오픈소스 앱용 ChatGPT 로그인](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)을 사용합니다. 선택한 파일과 요청을 OpenAI로 보내며, 계정에서 허용된 ChatGPT 구독 사용량과 한도를 따릅니다. 모든 구독의 이용 가능 여부나 무제한 사용을 보장하지는 않습니다. 로그인 정보는 VS Code SecretStorage에 보관합니다.
 
@@ -46,3 +48,5 @@ MCP 클라이언트에는 이렇게 요청할 수 있습니다.
 - ‘일치’는 ‘올바른 코드’나 ‘학습 효과 검증’을 뜻하지 않습니다.
 
 개발, 수정안 형식, 테스트 방법은 [README](README.md)를 참고하세요. MIT 라이선스로 공개합니다.
+
+[검증 범위와 남은 확인](docs/verification.md)

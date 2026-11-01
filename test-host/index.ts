@@ -101,12 +101,164 @@ async function testAsyncSessionChanges(api:ExtensionApi,root:string){
   assert.equal(await readFile(secondFile,'utf8'),secondBefore,'the pending step never edits its target');
 }
 
+async function typeCharacters(text:string){
+  for(const character of text)await vscode.commands.executeCommand('type',{text:character});
+}
+
+function guideTabs(){
+  // Some VS Code versions expose the main-thread prefix in TabInputWebview.
+  const types=new Set(['typeTheChange.guide','mainThreadWebview-typeTheChange.guide']);
+  return vscode.window.tabGroups.all.flatMap(group=>group.tabs).filter(tab=>tab.input instanceof vscode.TabInputWebview&&types.has(tab.input.viewType));
+}
+
+async function startFixture(api:ExtensionApi,root:string,file:string,original:string,steps:Plan['steps']){
+  await writeFile(path.join(root,file),original);
+  await api.startPlan({version:1,title:'Native typing',intent:'Change the selected source by typing.',steps},root);
+  const editor=vscode.window.activeTextEditor;
+  assert.ok(editor,'starting guidance focuses a native editor');
+  assert.equal(editor.document.uri.fsPath,path.join(root,file));
+  assert.equal(editor.document.getText(),original,'opening guidance never types on behalf of the person');
+  await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+  return editor;
+}
+
+async function nativeTypingAvailable(root:string){
+  const probeFile=path.join(root,'native-focus-probe.txt');
+  await writeFile(probeFile,'');
+  const probe=await vscode.workspace.openTextDocument(vscode.Uri.file(probeFile));
+  await vscode.window.showTextDocument(probe,{viewColumn:vscode.ViewColumn.One,preserveFocus:false,preview:false});
+  await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+  let changed=false;
+  const subscription=vscode.workspace.onDidChangeTextDocument(event=>{if(event.document.uri.toString()===probe.uri.toString())changed=true;});
+  try{
+    await vscode.commands.executeCommand('type',{text:'x'});
+    // The native command and TextDocument change arrive on different RPC paths.
+    const deadline=Date.now()+500;
+    while(!changed&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+  }finally{subscription.dispose();}
+  if(probe.getText()==='x')return true;
+  const explanation=`native keyboard cases: VS Code did not accept the type command (windowFocused=${vscode.window.state.focused}). Unlock and focus the host window to exercise automatic pairs, indentation, CRLF typing, sequential typing, and deleteLeft.`;
+  if(process.platform!=='darwin'||process.env.TTC_REQUIRE_NATIVE_TYPING==='1')assert.fail(explanation);
+  console.log(`HOST TEST SKIP: ${explanation}`);
+  return false;
+}
+
+async function testNativeTyping(api:ExtensionApi,root:string){
+  const config=vscode.workspace.getConfiguration('editor');
+  // Keep native language-defined bracket/quote closing and indentation enabled.
+  // Fix only indentation width and asynchronous completion UI in this isolated workspace.
+  const settings:Record<string,unknown>={tabSize:2,insertSpaces:true,detectIndentation:false,formatOnType:false,quickSuggestions:false,suggestOnTriggerCharacters:false,acceptSuggestionOnCommitCharacter:false};
+  const previous=new Map(Object.keys(settings).map(key=>[key,config.inspect(key)?.workspaceValue]));
+  try{
+    for(const [key,value]of Object.entries(settings))await config.update(key,value,vscode.ConfigurationTarget.Workspace);
+
+    const original='export function greet() {\n  return "hi";\n}\n';
+    const editor=await startFixture(api,root,'native-pairs.ts',original,[{file:'native-pairs.ts',before:'"hi"',after:'buildGreeting("Ada")',reason:'Call the greeting builder.'}]);
+    await typeCharacters('buildGreeting(');
+    assert.equal(editor.document.lineAt(1).text,'  return buildGreeting();','native typing inserts a closing parenthesis');
+    await typeCharacters('"');
+    assert.equal(editor.document.lineAt(1).text,'  return buildGreeting("");','native typing inserts a closing quote');
+    await typeCharacters('Ada")');
+    assert.equal(editor.document.lineAt(1).text,'  return buildGreeting("Ada");','typing closing delimiters steps over auto-inserted characters');
+    assert.equal(api.getState()?.status,'matched','native automatic pairs count as exact code');
+    await vscode.commands.executeCommand('typeTheChange.next');assert.equal(api.getState()?.complete,true);
+    assert.equal(await readFile(path.join(root,'native-pairs.ts'),'utf8'),original);
+    await api.stop();
+
+    const indentedOriginal='export function value(ready: boolean) {\n  return 0;\n}\n';
+    const indented=await startFixture(api,root,'native-indent.ts',indentedOriginal,[{file:'native-indent.ts',before:'return 0;',after:'if (ready) {\n    return 1;\n  }\n  return 0;',reason:'Return early when ready.'}]);
+    await typeCharacters('if (ready) {');
+    assert.equal(indented.document.lineAt(1).text,'  if (ready) {}','native brace completion stays inside the guided replacement');
+    await typeCharacters('\n');
+    assert.equal(indented.document.lineAt(2).text,'    ','Enter supplies the block indentation');
+    assert.equal(indented.document.lineAt(3).text,'  }','Enter keeps the automatically inserted closing brace on its own line');
+    await typeCharacters('return 1;');
+    await vscode.commands.executeCommand('cursorDown');await vscode.commands.executeCommand('cursorEnd');
+    await typeCharacters('\nreturn 0;');
+    assert.equal(api.getState()?.status,'matched','ordinary Enter and cursor movement reproduce a multiline target without manually duplicating indentation');
+    await api.next();assert.equal(api.getState()?.complete,true);await api.stop();
+
+    const windowsOriginal='export function windowsValue() {\r\n  return 1;\r\n}\r\n';
+    const windows=await startFixture(api,root,'native-crlf.ts',windowsOriginal,[{file:'native-crlf.ts',before:'return 1;',after:'const value = 2;\n  return value;',reason:'Name the returned value.'}]);
+    assert.equal(windows.document.eol,vscode.EndOfLine.CRLF);
+    await typeCharacters('const value = 2;\nreturn value;');
+    assert.equal(api.getState()?.status,'matched','LF plan snippets match native Enter in a CRLF document');
+    assert.equal(windows.document.getText(),'export function windowsValue() {\r\n  const value = 2;\r\n  return value;\r\n}\r\n');
+    await api.next();assert.equal(api.getState()?.complete,true);await api.stop();
+
+    const sequenceOriginal='export function total(price: number) {\n  return price;\n}\n';
+    const sequence=await startFixture(api,root,'native-sequence.ts',sequenceOriginal,[
+      {file:'native-sequence.ts',before:'return price;',after:'const amount = price;\n  return amount;',reason:'Name the amount before returning it.'},
+      {file:'native-sequence.ts',before:'return amount;',after:'return Math.max(0, amount);',reason:'Prevent a negative result.'},
+    ]);
+    await typeCharacters('const amount = price;\nreturn amount;');
+    assert.equal(api.getState()?.status,'matched');await vscode.commands.executeCommand('typeTheChange.next');
+    assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
+    assert.equal(sequence.document.getText(sequence.selection),'return amount;','the second same-file replacement is selected without a mouse');
+    await typeCharacters('return Math.max(0, amount);');
+    assert.equal(api.getState()?.status,'matched');await api.next();assert.equal(api.getState()?.complete,true);
+    assert.equal(await readFile(path.join(root,'native-sequence.ts'),'utf8'),sequenceOriginal);await api.stop();
+  }finally{
+    await api.stop();
+    for(const [key,value]of previous)await config.update(key,value,vscode.ConfigurationTarget.Workspace);
+  }
+}
+
+async function testDeletionAndPanel(api:ExtensionApi,root:string,nativeTyping:boolean){
+  await vscode.window.tabGroups.close(guideTabs(),true);
+  const original='export function quiet() {\n  console.log("debug");\n  return 1;\n}\n';
+  const editor=await startFixture(api,root,'native-delete.ts',original,[{file:'native-delete.ts',before:'  console.log("debug");\n',after:'',reason:'Remove the debug output.'}]);
+  const webviewTypes=vscode.window.tabGroups.all.flatMap(group=>group.tabs).flatMap(tab=>tab.input instanceof vscode.TabInputWebview?[tab.input.viewType]:[]);
+  assert.equal(guideTabs().length,1,`the guide opens beside the source; webview tab types: ${JSON.stringify(webviewTypes)}`);
+  console.log(`HOST TEST: guide tab identified as ${JSON.stringify(webviewTypes)}`);
+  assert.equal(editor.document.getText(editor.selection),'  console.log("debug");\n');
+  await vscode.window.tabGroups.close(guideTabs(),true);
+  assert.equal(guideTabs().length,0,'closing the guide disposes its tab');
+  assert.equal(api.getState()?.status,'untouched','closing the guide keeps the typing session');
+  await vscode.commands.executeCommand('typeTheChange.start');
+  assert.equal(guideTabs().length,1,'Start reopens the existing session guide');
+  assert.equal(editor.document.getText(),original,'closing and reopening never changes source');
+  await vscode.commands.executeCommand('typeTheChange.focus');
+  assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath,editor.document.uri.fsPath,'the focus command returns to native source');
+  assert.equal(editor.document.getText(editor.selection),'  console.log("debug");\n','focus reselects an untouched target so native Backspace deletes only the guided range');
+  if(nativeTyping)await vscode.commands.executeCommand('deleteLeft');
+  else assert.equal(await editor.edit(edit=>edit.delete(editor.selection)),true,'editor-edit fallback verifies deletion matching without claiming native keyboard coverage');
+  assert.equal(editor.document.getText(),'export function quiet() {\n  return 1;\n}\n');
+  assert.equal(api.getState()?.status,'matched','deletion can complete an empty replacement');
+  await vscode.commands.executeCommand('typeTheChange.next');assert.equal(api.getState()?.complete,true);
+  await vscode.commands.executeCommand('typeTheChange.review');
+  const diff=vscode.window.tabGroups.all.flatMap(group=>group.tabs).find(tab=>tab.input instanceof vscode.TabInputTextDiff&&tab.input.modified.fsPath===editor.document.uri.fsPath);
+  assert.ok(diff,'Review opens the native before/current diff');
+  assert.ok(diff.input instanceof vscode.TabInputTextDiff);
+  assert.equal(diff.input.original.scheme,'type-the-change-before');
+  assert.equal((await vscode.workspace.openTextDocument(diff.input.original)).getText(),original,'the review keeps the original full file, not the replacement snippet');
+  assert.equal((await vscode.workspace.openTextDocument(diff.input.modified)).getText(),editor.document.getText(),'review shows the unsaved human edits');
+  assert.equal(api.getState()?.complete,true,'opening review keeps the completed session');
+  await vscode.window.tabGroups.close(diff,true);
+  await vscode.commands.executeCommand('typeTheChange.stop');assert.equal(api.getState(),null);
+  assert.equal(await readFile(path.join(root,'native-delete.ts'),'utf8'),original,'deleting in the editor still requires the person to save');
+}
+
+async function testCommands(extension:vscode.Extension<ExtensionApi>){
+  const registered=new Set(await vscode.commands.getCommands(true));
+  const contributes=extension.packageJSON.contributes as {commands:{command:string}[];keybindings:{command:string;key:string;mac?:string;when:string}[]};
+  for(const {command}of contributes.commands)assert.ok(registered.has(command),`${command} is registered and available from the command palette`);
+  for(const name of ['review','chooseFiles','chooseModel','usage'])assert.ok(contributes.commands.some(item=>item.command===`typeTheChange.${name}`),`${name} is declared for command-palette access`);
+  for(const command of ['typeTheChange.next','typeTheChange.focus']){
+    const shortcut=contributes.keybindings.find(binding=>binding.command===command);
+    assert.ok(shortcut,`${command} has a keyboard binding`);
+    assert.ok(shortcut.key&&shortcut.mac,`${command} supports both platform keyboard conventions`);
+    assert.match(shortcut.when,/typeTheChange\.active/,'session shortcuts do not capture keys globally');
+  }
+}
+
 export async function run(){
   const root=process.env.TTC_HOST_TEST_ROOT!;
   const file=path.join(root,'sample.ts'),original='export function greet() {\n  return "hi";\n}\n';
   await writeFile(file,original);
   const extension=vscode.extensions.all.find(e=>e.id.toLowerCase()==='codenyangi.type-the-change');assert.ok(extension,'extension discovered');
   const api=await extension.activate() as ExtensionApi;
+  await testCommands(extension as vscode.Extension<ExtensionApi>);
   const plan:Plan={version:1,title:'Greet warmly',intent:'Change the greeting',steps:[{file:'sample.ts',before:'  return "hi";',after:'  return "hello";',reason:'Keep the same function and change its return value.'}]};
   await api.startPlan(plan,root);
   const editor=vscode.window.visibleTextEditors.find(e=>e.document.uri.fsPath===file)!;assert.ok(editor);
@@ -127,5 +279,8 @@ export async function run(){
   await api.stop();assert.equal(api.getState(),null);
   await testMultipleFiles(api,root);
   await testAsyncSessionChanges(api,root);
-  console.log('HOST TEST PASSED: guide, native typing, mismatch, prior-file divergence, completion invalidation, stale async operations, persisted MCP status, no source writes');
+  const nativeTyping=await nativeTypingAvailable(root);
+  if(nativeTyping)await testNativeTyping(api,root);
+  await testDeletionAndPanel(api,root,nativeTyping);
+  console.log(`HOST TEST PASSED: deletion comparison, panel reopen, review diff, command registration, mismatch, prior-file divergence, stale operations, MCP status, no source writes. Native keyboard cases: ${nativeTyping?'PASSED':'SKIPPED (see HOST TEST SKIP; editor-edit fallback is not keyboard verification)'}.`);
 }

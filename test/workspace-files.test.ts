@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readWorkspaceFile, writeBridgeFile, readBridgeFile, WorkspaceFileError, MAX_SOURCE_BYTES } from '../src/workspace-files.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { readWorkspaceFile, writeBridgeFile, readBridgeFile, WorkspaceFileError, MAX_SOURCE_BYTES, MAX_BRIDGE_BYTES } from '../src/workspace-files.js';
+
+const execFileAsync = promisify(execFile);
 
 async function fixture(t: { after: (fn: () => Promise<void>) => void }) {
   const root = await mkdtemp(join(tmpdir(), 'type-change-files-'));
@@ -51,6 +55,26 @@ test('source reader rejects oversized, binary, and invalid UTF-8 files', async t
   await assert.rejects(readWorkspaceFile(root, 'invalid.ts'), withCode('invalid_text'));
 });
 
+test('source reader preserves BOM and exact UTF-8 bytes at the file-size boundary', async t => {
+  const root = await fixture(t);
+  const source = '\uFEFF' + '가'.repeat(21_844) + 'x';
+  assert.equal(Buffer.byteLength(source), MAX_SOURCE_BYTES);
+  await writeFile(join(root, 'boundary.ts'), source);
+  assert.equal(await readWorkspaceFile(root, 'boundary.ts'), source);
+  await writeFile(join(root, 'boundary.ts'), source + 'x');
+  await assert.rejects(readWorkspaceFile(root, 'boundary.ts'), withCode('too_large'));
+});
+
+test('source reader rejects a named pipe without blocking on open', { skip: process.platform === 'win32' }, async t => {
+  const root = await fixture(t);
+  await execFileAsync('mkfifo', [join(root, 'pipe.ts')]);
+  const script = `import {readWorkspaceFile} from './src/workspace-files.ts';
+try { await readWorkspaceFile(process.argv[1], 'pipe.ts'); process.exitCode = 1; }
+catch (error) { process.stdout.write(error.code); }`;
+  const result = await execFileAsync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script, root], { timeout: 2000 });
+  assert.equal(result.stdout, 'not_regular_file');
+});
+
 test('bridge writes are atomic JSON records and never change source contents', async t => {
   const root = await fixture(t);
   assert.equal(await readBridgeFile(root, 'status.json'), undefined);
@@ -84,4 +108,15 @@ test('bridge does not treat malformed JSON as a usable extension record', async 
   await mkdir(join(root, '.type-the-change'));
   await writeFile(join(root, '.type-the-change', 'status.json'), '{');
   await assert.rejects(readBridgeFile(root, 'status.json'), withCode('invalid_text'));
+});
+
+test('rejected oversized bridge records retain the existing proposal and leave no temporary files', async t => {
+  const root = await fixture(t);
+  const original = { version: 1, title: 'Keep this plan' };
+  await writeBridgeFile(root, 'plan.json', original);
+  await assert.rejects(writeBridgeFile(root, 'plan.json', { text: 'x'.repeat(MAX_BRIDGE_BYTES) }), withCode('too_large'));
+  assert.deepEqual(await readBridgeFile(root, 'plan.json'), original);
+  assert.deepEqual(await readdir(join(root, '.type-the-change')), ['plan.json']);
+  await writeFile(join(root, '.type-the-change', 'status.json'), ' '.repeat(MAX_BRIDGE_BYTES + 1));
+  await assert.rejects(readBridgeFile(root, 'status.json'), withCode('too_large'));
 });

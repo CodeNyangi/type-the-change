@@ -2,40 +2,126 @@
   "name": "type-the-change",
   "displayName": "Type the Change",
   "description": "Let AI point out the change. Type it yourself, in your own code.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
-  "engines": {"vscode": "^1.100.0", "node": ">=22"},
-  "categories": ["Education", "Other"],
-  "keywords": ["learning", "typing", "code review", "mcp", "chatgpt"],
-  "repository": {"type": "git", "url": "https://github.com/CodeNyangi/type-the-change.git"},
-  "bugs": {"url": "https://github.com/CodeNyangi/type-the-change/issues"},
+  "engines": {
+    "vscode": "^1.100.0",
+    "node": ">=22"
+  },
+  "categories": [
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "learning",
+    "typing",
+    "code review",
+    "mcp",
+    "chatgpt"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CodeNyangi/type-the-change.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CodeNyangi/type-the-change/issues"
+  },
   "homepage": "https://github.com/CodeNyangi/type-the-change#readme",
   "main": "./dist/extension.cjs",
-  "extensionKind": ["workspace"],
-  "activationEvents": ["onStartupFinished"],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "capabilities": {
-    "untrustedWorkspaces": {"supported": false, "description": "Reads selected source files and prepares local typing guidance."},
-    "virtualWorkspaces": {"supported": false, "description": "This preview uses local files and a loopback sign-in callback."}
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Reads selected source files and prepares local typing guidance."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "This preview uses local files and a loopback sign-in callback."
+    }
   },
   "contributes": {
     "commands": [
-      {"command":"typeTheChange.start","title":"Type the Change: Start"},
-      {"command":"typeTheChange.generate","title":"Type the Change: Plan a Change with ChatGPT"},
-      {"command":"typeTheChange.signIn","title":"Type the Change: Continue with ChatGPT"},
-      {"command":"typeTheChange.signOut","title":"Type the Change: Sign Out"},
-      {"command":"typeTheChange.import","title":"Type the Change: Open a Plan"},
-      {"command":"typeTheChange.loadPending","title":"Type the Change: Open MCP Plan"},
-      {"command":"typeTheChange.next","title":"Type the Change: Review and Continue"},
-      {"command":"typeTheChange.focus","title":"Type the Change: Go to Change"},
-      {"command":"typeTheChange.stop","title":"Type the Change: End Session"},
-      {"command":"typeTheChange.demo","title":"Type the Change: Try the Demo"},
-      {"command":"typeTheChange.mcpConfig","title":"Type the Change: Show MCP Connection"}
+      {
+        "command": "typeTheChange.start",
+        "title": "Type the Change: Start"
+      },
+      {
+        "command": "typeTheChange.generate",
+        "title": "Type the Change: Plan a Change with ChatGPT"
+      },
+      {
+        "command": "typeTheChange.signIn",
+        "title": "Type the Change: Continue with ChatGPT"
+      },
+      {
+        "command": "typeTheChange.signOut",
+        "title": "Type the Change: Sign Out"
+      },
+      {
+        "command": "typeTheChange.import",
+        "title": "Type the Change: Open a Plan"
+      },
+      {
+        "command": "typeTheChange.loadPending",
+        "title": "Type the Change: Open MCP Plan"
+      },
+      {
+        "command": "typeTheChange.next",
+        "title": "Type the Change: Review and Continue"
+      },
+      {
+        "command": "typeTheChange.focus",
+        "title": "Type the Change: Go to Change"
+      },
+      {
+        "command": "typeTheChange.stop",
+        "title": "Type the Change: End Session"
+      },
+      {
+        "command": "typeTheChange.demo",
+        "title": "Type the Change: Try the Demo"
+      },
+      {
+        "command": "typeTheChange.mcpConfig",
+        "title": "Type the Change: Show MCP Connection"
+      },
+      {
+        "command": "typeTheChange.chooseFiles",
+        "title": "Type the Change: Select Files"
+      },
+      {
+        "command": "typeTheChange.chooseModel",
+        "title": "Type the Change: Select Model"
+      },
+      {
+        "command": "typeTheChange.usage",
+        "title": "Type the Change: ChatGPT Usage"
+      },
+      {
+        "command": "typeTheChange.review",
+        "title": "Type the Change: Review Changes"
+      }
     ],
     "keybindings": [
-      {"command":"typeTheChange.next","key":"ctrl+alt+enter","mac":"cmd+alt+enter","when":"typeTheChange.active"},
-      {"command":"typeTheChange.focus","key":"ctrl+alt+t","mac":"cmd+alt+t","when":"typeTheChange.active"}
+      {
+        "command": "typeTheChange.next",
+        "key": "ctrl+alt+enter",
+        "mac": "cmd+alt+enter",
+        "when": "typeTheChange.active"
+      },
+      {
+        "command": "typeTheChange.focus",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "typeTheChange.active"
+      }
     ]
   },
   "scripts": {
@@ -43,8 +129,9 @@
     "check": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
     "test:host": "node scripts/test-host.mjs",
-    "package": "npm run build && vsce package --no-dependencies --out artifacts/type-the-change-0.1.0.vsix",
-    "vscode:prepublish": "npm run build"
+    "package": "npm run build && vsce package --no-dependencies --out artifacts/type-the-change-0.2.0.vsix",
+    "vscode:prepublish": "npm run build",
+    "preview": "node --import tsx scripts/preview.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
@@ -53,11 +140,13 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",
+    "@types/jsdom": "^30.0.0",
     "@types/node": "^22.0.0",
     "@types/vscode": "1.100.0",
     "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.1.0",
     "esbuild": "0.28.2",
+    "jsdom": "^29.1.1",
     "tsx": "4.23.15",
     "typescript": "7.0.2"
   }

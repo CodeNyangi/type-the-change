@@ -1,26 +1,29 @@
 import * as vscode from 'vscode';
 import {randomBytes} from 'node:crypto';
+import {panelHtml, PANEL_COMMANDS, type PanelState} from './panel-view.js';
+export type {PanelState} from './panel-view.js';
 
-export type PanelState={title:string;intent?:string;file?:string;line?:number;reason?:string;before?:string;after?:string;step?:number;total?:number;status?:string;message?:string;canContinue?:boolean;complete?:boolean};
+export interface PanelMessage {command:string;intent?:string}
 export class GuidePanel implements vscode.Disposable {
   private panel:vscode.WebviewPanel|undefined;
-  private state:PanelState={title:'Type the Change'};
-  constructor(private onCommand:(command:string)=>void){}
-  show(){
-    if(this.panel){this.panel.reveal(vscode.ViewColumn.Beside,true);return;}
-    this.panel=vscode.window.createWebviewPanel('typeTheChange.guide','Type the Change',{viewColumn:vscode.ViewColumn.Beside,preserveFocus:true},{enableScripts:true,localResourceRoots:[],retainContextWhenHidden:true});
-    this.panel.webview.html=html();
+  private state:PanelState={};
+  constructor(private onCommand:(message:PanelMessage)=>void){}
+  show(preserveFocus=false){
+    if(this.panel){this.panel.reveal(vscode.ViewColumn.Beside,preserveFocus);return;}
+    this.panel=vscode.window.createWebviewPanel('typeTheChange.guide','Type the Change',
+      {viewColumn:vscode.ViewColumn.Beside,preserveFocus},
+      {enableScripts:true,localResourceRoots:[],retainContextWhenHidden:true});
+    this.panel.webview.html=panelHtml(randomBytes(24).toString('base64'),process.platform==='darwin');
     this.panel.webview.onDidReceiveMessage(message=>{
-      if(message?.command==='ready')this.update(this.state);
-      else if(typeof message?.command==='string'&&['generate','import','demo','focus','next','stop','signIn','mcpConfig'].includes(message.command))this.onCommand(message.command);
+      if(message?.command==='ready'){this.update(this.state);if(!this.state.file)this.focusIntent();}
+      else if(typeof message?.command==='string'&&PANEL_COMMANDS.has(message.command)){
+        if(message.command==='generate'&&(typeof message.intent!=='string'||!message.intent.trim()||message.intent.length>4000))return;
+        this.onCommand({command:message.command,...(message.command==='generate'?{intent:message.intent}:{})});
+      }
     });
     this.panel.onDidDispose(()=>{this.panel=undefined;});
   }
   update(state:PanelState){this.state=state;void this.panel?.webview.postMessage(state);}
+  focusIntent(){void this.panel?.webview.postMessage({type:'focusIntent'});}
   dispose(){this.panel?.dispose();}
 }
-function html(){const nonce=randomBytes(24).toString('base64');return `<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';"><style nonce="${nonce}">
-*{box-sizing:border-box}body{margin:0;padding:28px 24px;color:var(--vscode-foreground);background:var(--vscode-editor-background);font:13px/1.7 var(--vscode-font-family)}button{font:inherit;cursor:pointer;border:0;border-radius:5px;padding:9px 13px;color:var(--vscode-button-foreground);background:var(--vscode-button-background)}button:hover{background:var(--vscode-button-hoverBackground)}button:disabled{opacity:.35;cursor:default}button:focus-visible{outline:1px solid var(--vscode-focusBorder);outline-offset:3px}.secondary{color:var(--vscode-foreground);background:var(--vscode-button-secondaryBackground)}.quiet{background:transparent;color:var(--vscode-descriptionForeground);padding:4px 0}h1{font-size:20px;letter-spacing:-.3px;font-weight:500;line-height:1.5;margin:10px 0 14px}.eyebrow{font-size:11px;color:var(--vscode-descriptionForeground)}#intent{color:var(--vscode-descriptionForeground);margin:0 0 24px}#file{font-family:var(--vscode-editor-font-family);word-break:break-all}#reason{margin:16px 0 20px}pre{background:var(--vscode-textCodeBlock-background);padding:16px;border-radius:7px;overflow-x:auto;tab-size:4;font:var(--vscode-editor-font-size)/1.8 var(--vscode-editor-font-family);white-space:pre;margin:14px 0}#after{border-left:2px solid var(--vscode-gitDecoration-addedResourceForeground)}details{color:var(--vscode-descriptionForeground);font-size:11px;margin-top:16px}summary{cursor:pointer}#status{font-size:12px;color:var(--vscode-descriptionForeground);margin:24px 0 8px}#status[data-state=matched]{color:var(--vscode-testing-iconPassed)}#status[data-state=outside]{color:var(--vscode-editorWarning-foreground)}.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0}.home{padding-top:10px}.home p{color:var(--vscode-descriptionForeground)}.sub{margin-top:32px;padding-top:16px;border-top:1px solid var(--vscode-widget-border)}#shortcut{font-size:11px;color:var(--vscode-descriptionForeground);margin-top:10px}[hidden]{display:none!important}
-</style></head><body><div class="eyebrow">TYPE THE CHANGE</div><h1 id="title">직접 바꾸는 코드</h1><p id="intent">AI가 짚고, 내가 쓴다.</p><section id="home" class="home"><div class="actions"><button data-command="generate">변경 만들기</button><button data-command="demo" class="secondary">먼저 써보기</button></div><button data-command="import" class="quiet">수정안 열기</button><div class="sub"><button data-command="signIn" class="quiet">Continue with ChatGPT</button><p>AI 요청에는 연결한 ChatGPT 구독 사용량이 쓰입니다.</p><button data-command="mcpConfig" class="quiet">MCP 연결</button></div></section><section id="guide" hidden><button id="file" data-command="focus" class="quiet"></button><p id="reason"></p><pre id="after"></pre><details><summary>변경 전</summary><pre id="before"></pre></details><p id="status" role="status" aria-live="polite"></p><div class="actions"><button id="next" data-command="next" disabled>확인하고 다음</button><button data-command="focus" class="secondary">수정 위치</button></div><div id="shortcut">⌘⌥Enter / Ctrl+Alt+Enter</div><div class="sub"><button data-command="stop" class="quiet">여기까지</button></div></section><section id="complete" hidden><p>제안한 변경과 일치합니다.</p><p>실제 동작은 테스트와 변경 내역에서 확인하세요.</p><button data-command="stop">마치기</button></section><script nonce="${nonce}">
-const vscode=acquireVsCodeApi();const $=id=>document.getElementById(id);let last='';document.querySelectorAll('[data-command]').forEach(b=>b.addEventListener('click',()=>vscode.postMessage({command:b.dataset.command})));window.addEventListener('message',({data:s})=>{const active=typeof s.file==='string';$('home').hidden=active||s.complete;$('guide').hidden=!active||s.complete;$('complete').hidden=!s.complete;$('title').textContent=s.title||'직접 바꾸는 코드';$('intent').textContent=s.intent||'AI가 짚고, 내가 쓴다.';if(active){$('file').textContent=s.file+':'+s.line+' · '+s.step+'/'+s.total;$('reason').textContent=s.reason||'';if(last!==s.after){$('after').textContent=s.after||'(이 부분을 지웁니다)';last=s.after;}$('before').textContent=s.before||'';$('status').textContent=s.message||'';$('status').dataset.state=s.status||'';$('next').disabled=!s.canContinue;$('next').textContent=s.step===s.total?'확인하고 마치기':'확인하고 다음';}});vscode.postMessage({command:'ready'});
-</script></body></html>`;}
