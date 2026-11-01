@@ -6,11 +6,11 @@
 
 **Type the Change is an open-source VS Code extension for AI-assisted coding and deliberate coding practice.** Read a proposed code change, type it in your own editor, and review the diff. Use an imported JSON plan, an optional ChatGPT connection, or a Model Context Protocol (MCP) client.
 
-It is for developers who want to stay involved in the details of an AI-proposed change: a condition, a return value, a small refactor. The extension selects the relevant code and keeps the proposal beside it. The direct ChatGPT integration runs inside VS Code and does not require Codex Desktop, Codex CLI, or a separate MCP client.
+It is for developers who want to stay involved in the details of an AI-proposed change: a condition, a return value, a small refactor. The extension selects the relevant code in the native editor and shows the goal beside it. Open **제안 보기** when you want the proposed code and reasoning. The direct ChatGPT integration runs inside VS Code and does not require Codex Desktop, Codex CLI, or a separate MCP client.
 
 1. Describe a change and select the relevant files, or receive a plan from an MCP client.
-2. The extension opens the exact replacement range, with the proposal beside your editor.
-3. Type in the native editor. Compare, review, and continue with **⌘⌥Enter** / **Ctrl+Alt+Enter**.
+2. Inspect the selected code and try the change; the proposal stays closed until requested.
+3. Compare at any time. When the text matches, continue with **⌘⌥Enter** / **Ctrl+Alt+Enter**.
 
 You control editing and saving. Normal Undo, completion, paste, and accessibility tools remain available. A match means the text agrees with the proposal; use your tests and Git diff to judge the result. Deliberate practice is the design intent, not a claim of measured learning gains.
 
@@ -22,7 +22,9 @@ Requires local desktop VS Code 1.100 or later. This is an early preview; the int
 2. In VS Code, run **Extensions: Install from VSIX…** from the command palette.
 3. Run **Type the Change: Try the Demo**. No sign-in is needed for the demo or imported plans.
 
-The demo creates a temporary `price.ts`, selects a line, and shows a small change. Type the replacement, read it, and press the continuation shortcut. **⌘⌥T** / **Ctrl+Alt+T** returns to the current change. Normal editor Undo, selection, and accessibility tools remain available. After completion, **변경 확인** opens the original/current diff without applying or saving anything.
+The demo creates a temporary `price.ts`: it stops at a negative price instead of skipping it. Predict the total for `[10, -5, 20]`, change the selected line, then check `[-5, 10, 20]`. **직접 바꾸기** returns to the code; **제안 보기** reveals help. **변경 비교** opens the original/current diff at any time. One primary action follows the current state; no quiz or explanation form blocks editing. **⌘⌥T** / **Ctrl+Alt+T** also returns to the current change. Normal editor Undo, selection, and accessibility tools remain available. The extension does not execute the example or save files automatically.
+
+An alternative implementation can be compared and kept by ending guidance with **×**. Continuation still requires an exact text match; it does not judge whether a different solution is correct.
 
 To use a local JSON plan, open its target project and run **Type the Change: Open a Plan**. See the [plan schema](plan.schema.json) and [example](examples/plan.json).
 

@@ -67,11 +67,13 @@ test('a newly connected account can choose its model before the first request',(
 });
 test('typing, matching, continuation, completion and next request stay in one guide',()=>{
  const v=view();v.update(step);assert.equal(v.get('guide').hidden,false);assert.equal(v.get('home').hidden,true);assert.equal(v.get('after').textContent,'new();');
- assert.equal(v.get('status').textContent,'선택된 코드를 직접 바꿔 보세요.');
- assert.equal(v.get<HTMLButtonElement>('next').disabled,true);const count=v.messages.length;v.click('next');assert.equal(v.messages.length,count);
+ assert.equal(v.get('status').textContent,'','the edit action replaces a repeated instruction');
+ assert.equal(v.get('edit').hidden,false);v.click('focus');assert.equal(v.messages.at(-1).command,'focus');
+ assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('next').hidden,true);
  v.update({...step,status:'editing',message:''});assert.equal(v.get('status').textContent,'','the initial instruction clears when typing begins');
  v.update({...step,status:'matched',message:'제안과 일치',canContinue:true});v.click('next');assert.equal(v.messages.at(-1).command,'next');
- v.update({...step,step:2});assert.equal(v.get('next-label').textContent,'완료');
+ assert.equal(v.get('edit').hidden,true);assert.equal(v.get('next').hidden,false);
+ v.update({...step,step:2});assert.equal(v.get('next-label').textContent,'입력 마치기');
  v.update({...step,step:2,complete:true,canContinue:true});assert.equal(v.get('next').hidden,true);assert.equal(v.get('review').hidden,false);assert.equal(v.get('guide').hidden,false);
  v.click('review');assert.equal(v.messages.at(-1).command,'review');v.click('stop');assert.equal(v.messages.at(-1).command,'stop');
  v.update({});assert.equal(v.get('home').hidden,false);v.close();
@@ -83,10 +85,10 @@ test('deletion has an explicit visual instruction on first open and reopening',(
 test('outside changes disable advancement and completion can be invalidated',()=>{
  const v=view();v.update({...step,complete:true,canContinue:true});
  v.update({...step,status:'outside',message:'다른 부분도 바뀌었어요.',canContinue:false,complete:false});
- assert.equal(v.get('review').hidden,false);assert.equal(v.get('next').hidden,false);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('status').dataset.state,'outside');
+ assert.equal(v.get('review').hidden,false);assert.equal(v.get('next').hidden,true);assert.equal(v.get('edit').hidden,true);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('status').dataset.state,'outside');
  v.click('review');assert.equal(v.messages.at(-1).command,'review','the comparison is reachable from the blocked state');
  v.get('review').focus();v.update({...step,canContinue:true,status:'matched'});
- assert.equal(v.get('review').hidden,true);assert.equal(v.document.activeElement?.id,'next','recovery keeps focus on a visible action');v.close();
+ assert.equal(v.get('review').hidden,false);assert.equal(v.document.activeElement?.id,'review','comparison stays available without moving keyboard focus');v.close();
 });
 test('preview fixture and theme messages never replace the current host state',()=>{
  const v=view();v.update({...step,canContinue:true,status:'matched'});
@@ -98,16 +100,38 @@ test('preview fixture and theme messages never replace the current host state',(
  v.update({});v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusIntent'}}));
  assert.equal(v.document.activeElement?.id,'intent','the real focus control message is still handled');v.close();
 });
-test('location and shortcut route correctly without a duplicate location button',()=>{
+test('location, edit action and shortcut route to the existing host commands',()=>{
  const v=view();v.update({...step,canContinue:true});v.click('focus');assert.equal(v.messages.at(-1).command,'focus');
- assert.equal(v.document.querySelectorAll('[data-command="focus"]').length,1);
+ v.update(step);v.get('edit').click();assert.equal(v.messages.at(-1).command,'focus');v.update({...step,canContinue:true});
  v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'next');
  v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);assert.doesNotMatch(windows.get('next').textContent||'',/⌘/);windows.close();
 });
 test('before-code disclosure persists during typing and resets for a new step',()=>{
- const v=view();v.update(step);v.get<HTMLDetailsElement>('original').open=true;
- v.update({...step,status:'editing'});assert.equal(v.get<HTMLDetailsElement>('original').open,true);
- v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('original').open,false);v.close();
+ const v=view();v.update(step);assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);
+ v.get<HTMLDetailsElement>('proposal').open=true;v.get<HTMLDetailsElement>('original').open=true;
+ v.update({...step,status:'editing'});assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);assert.equal(v.get<HTMLDetailsElement>('original').open,true);
+ v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);assert.equal(v.get<HTMLDetailsElement>('original').open,false);
+ v.get<HTMLDetailsElement>('proposal').open=true;v.update({});v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false,'the same plan reopened after ending starts with the proposal closed');v.close();
+});
+test('each guide state has one primary action while comparison is always available',()=>{
+ const v=view();
+ for(const [state,primary] of [[step,'edit'],[{...step,status:'editing'},'edit'],[{...step,status:'matched',canContinue:true},'next'],[{...step,status:'outside'},'review'],[{...step,complete:true,canContinue:true},'review']] as const){
+  v.update(state);const actions=[...v.get('actions').querySelectorAll('button')].filter(b=>!b.hidden&&!b.classList.contains('quiet'));
+  assert.deepEqual(actions.map(b=>b.id),[primary]);v.get('review').click();assert.equal(v.messages.at(-1).command,'review');
+ }
+ assert.equal(v.get<HTMLProgressElement>('progress').value,2);assert.equal(v.get('progress').getAttribute('aria-valuetext'),'2 / 2');v.close();
+});
+test('changing the primary action preserves keyboard focus without approving a step',()=>{
+ const v=view();v.update(step);v.get('edit').focus();const count=v.messages.length;
+ v.update({...step,status:'matched',canContinue:true});assert.equal(v.document.activeElement?.id,'next');
+ v.update({...step,status:'editing',canContinue:false});assert.equal(v.document.activeElement?.id,'edit');
+ v.update({...step,status:'outside'});assert.equal(v.document.activeElement?.id,'review');
+ assert.equal(v.messages.length,count,'host updates cannot accept or edit code');v.close();
+});
+test('a new step does not leave keyboard focus inside its collapsed proposal',()=>{
+ const v=view();v.update(step);v.get<HTMLDetailsElement>('proposal').open=true;
+ v.get('original').querySelector('summary')!.focus();
+ v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);assert.equal(v.document.activeElement?.id,'edit');v.close();
 });
 test('untrusted code, intent, filenames and errors are rendered as text',()=>{
  const v=view();const hostile='<img src=x onerror="window.hacked=true">';v.update({...step,title:hostile,file:hostile,after:hostile,reason:hostile,error:hostile,notice:hostile});

@@ -32,8 +32,12 @@ const states={
   busy:{busy:true,phase:'수정안을 만드는 중',files:['src/가격 계산.ts']},
   error:{error:'연결할 수 없어요. 다시 시도해 주세요. 오류가 반복되면 연결 상태를 확인해 주세요.'},
   long:longStep,
+  proposal:longStep,
+  editing:{...step,status:'editing',message:''},
+  matched:{...step,status:'matched',canContinue:true,message:'제안과 일치'},
   outside:{...longStep,status:'outside',message:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.'},
   delete:{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
+  'delete-revealed':{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
   complete:{...step,status:'matched',canContinue:true,complete:true,step:2},
 };
 const report={startedAt:new Date().toISOString(),mode:'Chromium headless with isolated browser context and mocked VS Code host',limits:['No native VS Code window or OS keyboard/IME was used.','Composition events verify the JavaScript guard, not real Korean input-method behavior.','No live account, provider request, or source-file edit was performed.','Representative theme tokens and accessibility checks are not a full WCAG or screen-reader certification.'],browser:'',matrix:[],interactionChecks:[],errors:[]};
@@ -58,9 +62,14 @@ try{
     assert.equal(await page.locator('#home').isVisible(),!active,`${name}: home`);
     assert.equal(await page.locator('#guide').isVisible(),active,`${name}: guide`);
     if(active){
-      assert.equal(await page.locator('#after').isVisible(),state.after!=='',`${name}: proposed code`);
-      assert.equal(await page.locator('#delete-hint').isVisible(),state.after==='',`${name}: deletion hint`);
-      assert.equal(await page.locator('#review').isVisible(),!!state.complete||state.status==='outside',`${name}: review access`);
+      const revealed=await page.locator('#proposal').evaluate(e=>e.open);
+      assert.equal(await page.locator('#after').isVisible(),revealed&&state.after!=='',`${name}: proposed code`);
+      assert.equal(await page.locator('#delete-hint').isVisible(),revealed&&state.after==='',`${name}: deletion hint`);
+      assert.equal(await page.locator('#review').isVisible(),true,`${name}: review access`);
+      const reviewing=!!state.complete||state.status==='outside';
+      assert.equal(await page.locator('#edit').isVisible(),!reviewing&&!state.canContinue,`${name}: edit action`);
+      assert.equal(await page.locator('#next').isVisible(),!reviewing&&!!state.canContinue,`${name}: continue action`);
+      assert.equal(await page.locator('#actions button:not(.quiet):visible').count(),1,`${name}: one primary action`);
       if(!state.complete)assert.equal(await page.locator('#next').isEnabled(),!!state.canContinue,`${name}: next state`);
     }
     if(state.error)assert.equal(await page.getByRole('alert').textContent(),state.error);
@@ -71,7 +80,9 @@ try{
     await page.setViewportSize({width,height:900});await fresh();
     await page.evaluate(tokens=>{for(const [key,value]of Object.entries(tokens))document.documentElement.style.setProperty('--vscode-'+key,value);},tokens);
     for(const [name,state]of Object.entries(states)){
-      await update(state);await assertState(name,state);await page.evaluate(()=>window.scrollTo(0,0));
+      await update(state);
+      await page.locator('#proposal').evaluate((e,reveal)=>e.open=reveal,['proposal','delete-revealed'].includes(name));
+      await assertState(name,state);await page.evaluate(()=>window.scrollTo(0,0));
       const metrics=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,buttons:[...document.querySelectorAll('button')].filter(b=>b.checkVisibility()).map(b=>({name:(b.getAttribute('aria-label')||b.textContent||'').trim(),left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right})),code:{width:document.querySelector('#after').clientWidth,scrollWidth:document.querySelector('#after').scrollWidth}}));
       assert.ok(metrics.scrollWidth<=width+1,`${theme}/${width}/${name}: outer horizontal overflow ${metrics.scrollWidth}`);
       for(const button of metrics.buttons){assert.ok(button.name,`${name}: unnamed visible button`);assert.ok(button.left>=-1&&button.right<=width+1,`${name}: button outside viewport: ${button.name}`);}
@@ -120,8 +131,12 @@ try{
     await page.locator('#account-options summary').click();
     for(const command of ['usage','signOut']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
     await update(step);await page.locator('#file').click();assert.equal(await lastCommand(),'focus');
+    assert.equal(await page.locator('#after').isVisible(),false,'proposal does not give away the change on first open');
+    await page.locator('#edit').click();assert.equal(await lastCommand(),'focus');
     const blocked=(await events()).length;await page.keyboard.press((mac?'Meta':'Control')+'+Alt+Enter');assert.equal((await events()).length,blocked);
+    await page.locator('#proposal summary').first().click();assert.equal(await page.locator('#after').isVisible(),true);
     await page.locator('#original summary').click();await update({...step,status:'editing',message:''});assert.equal(await page.locator('#original').evaluate(e=>e.open),true);
+    assert.equal(await page.locator('#proposal').evaluate(e=>e.open),true,'typing must not collapse an intentionally opened suggestion');
     await update({...step,status:'matched',message:'제안과 일치',canContinue:true});
     await page.evaluate(mac=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',metaKey:mac,ctrlKey:!mac,altKey:true,isComposing:true,cancelable:true})),mac);
     assert.equal((await events()).length,blocked,'IME composition cannot approve a typing step');
@@ -130,15 +145,16 @@ try{
     assert.equal(await page.evaluate(()=>document.activeElement?.id),'review','completion moves focus off the hidden next button');
     await page.locator('#review').click();assert.equal(await lastCommand(),'review');
     await update({...step,status:'outside',message:'다른 부분도 바뀌었어요.'});assert.equal(await page.locator('#review').isVisible(),true);assert.equal(await page.locator('#next').isEnabled(),false);
-    await page.locator('#review').focus();await update({...step,status:'matched',canContinue:true});assert.equal(await page.evaluate(()=>document.activeElement?.id),'next');
+    await page.locator('#review').focus();await update({...step,status:'matched',canContinue:true});assert.equal(await page.evaluate(()=>document.activeElement?.id),'review');
     await update({...step,complete:true});await page.locator('#again').click();assert.equal(await lastCommand(),'stop');await update({});
     assert.equal(await page.evaluate(()=>document.activeElement?.id),'intent');
     await update({error:'연결 오류'});assert.equal(await page.getByRole('alert').isVisible(),true);await update({});assert.equal(await page.getByRole('alert').isVisible(),false);
     assert.deepEqual([...new Set((await events()).map(event=>event.command).filter(command=>command!=='ready'))].sort(),[...PANEL_COMMANDS].sort(),'every production command was exercised');
-    report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','blocked and matched next','before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
+    report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','proposal hidden until requested','edit action','blocked and matched next','proposal and before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
   }
   // Long code must remain accessible via keyboard scrolling at the narrowest width.
   await page.setViewportSize({width:300,height:900});await fresh();await update(longStep);
+  await page.locator('#proposal summary').first().click();
   await page.locator('#after').focus();assert.equal(await page.evaluate(()=>document.activeElement?.id),'after','overflowing proposal code is focusable');
   await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.querySelector('#after').scrollLeft>0);
   report.interactionChecks.push({passed:['keyboard horizontal scrolling of long code']});

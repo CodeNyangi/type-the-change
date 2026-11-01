@@ -2,6 +2,9 @@
 
 ## Unreleased — audit fixes
 
+- Show the change goal before the proposed answer. Keep proposals closed until requested, expose one primary action per state, and allow original/current comparison throughout the session. Ending guidance keeps edits.
+- Replace the demo with a `return` versus `continue` example, including transfer inputs; distinguish exact text agreement from correct behavior and learning.
+- Expand the headless matrix to 108 layouts, including hidden/revealed proposals, editing, matching and deletion help.
 - Keep the native editor and guide visibly side by side when starting from an empty workbench; show a Korean recovery instruction for invalid JSON imports.
 - Reject oversized intermediate files and conflicting physical-file aliases before accepting guidance; preserve reviewed completion when unchanged documents reload.
 - Serialize account operations across local extension hosts and recover all documented terminal refresh-token errors without erasing newer credentials.

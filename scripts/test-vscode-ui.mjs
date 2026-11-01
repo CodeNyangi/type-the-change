@@ -62,7 +62,7 @@ async function statusIs(frame, expected) {
 }
 
 async function focusSource(frame) {
-  await frame.locator('#file').click();
+  await frame.locator('#edit').click();
   // Webview messages cross processes before showTextDocument restores focus.
   await page.waitForFunction(() => Boolean(document.activeElement?.closest('.monaco-editor')));
 }
@@ -137,6 +137,9 @@ try {
   await view.locator('#other summary').click();
   await view.locator('[data-command="import"]').click();
   await view.locator('#guide').waitFor({state: 'visible'});
+  assert.equal(await view.locator('#after').isVisible(), false);
+  assert.equal(await view.locator('#edit').isVisible(), true);
+  await view.locator('#proposal > summary').click();
   await textIs(view, '#after', '2');
   assert.equal(await view.locator('#next').isDisabled(), true);
   assert.equal(await readFile(path.join(workspace, first), 'utf8'), firstBefore);
@@ -158,6 +161,8 @@ try {
   report.checks.push('Out-of-range edits block Next and expose review; restoring the buffer re-enables progress.');
 
   await page.keyboard.press('Control+Alt+Enter');
+  await until(async () => !(await view.locator('#proposal').evaluate(e => e.open)), 'The next step must start with its proposal closed.');
+  await view.locator('#proposal > summary').click();
   await textIs(view, '#after', '20');
   await focusSource(view);
   await page.keyboard.type('20');
@@ -185,9 +190,28 @@ try {
   await view.locator('#demo').click();
   await view.locator('#guide').waitFor({state: 'visible'});
   await view.locator('#file').waitFor({state: 'visible'});
+  assert.equal(await view.locator('#after').isVisible(), false);
+  await focusSource(view);
+  await page.keyboard.type('      break;');
+  await statusIs(view, 'editing');
+  assert.equal(await view.locator('#review').isVisible(), true, 'a different implementation can still be reviewed');
+  await view.locator('#review').click();
+  await page.locator('.monaco-diff-editor').first().waitFor({state: 'visible'});
+  await until(async () => (await page.locator('.monaco-diff-editor').allTextContents()).some(text => text.includes('break;')), 'The diff must show the actual alternative edit.');
   await view.locator('#end').click();
   await view.locator('#home').waitFor({state: 'visible'});
-  report.checks.push('Try the Demo opens visible guidance beside source; End Session returns to the composer.');
+  assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(text => text.includes('break;')), 'ending guidance preserves the alternative edit');
+  await view.locator('#demo').click();
+  await view.locator('#guide').waitFor({state: 'visible'});
+  await focusSource(view);
+  await page.keyboard.type('      continue;');
+  await statusIs(view, 'matched');
+  await view.locator('#next').click();
+  await statusIs(view, 'complete');
+  await page.screenshot({path: path.join(artifacts, 'learning-demo.png')});
+  await view.locator('#end').click();
+  await view.locator('#home').waitFor({state: 'visible'});
+  report.checks.push('The demo hides the answer, permits review of an alternative, preserves that edit after ending, and accepts native typing of continue in a fresh sample.');
 
   await mkdir(path.join(workspace, '.type-the-change'), {recursive: true});
   await writeFile(path.join(workspace, '.type-the-change/plan.json'), JSON.stringify({
