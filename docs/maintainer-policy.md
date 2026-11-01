@@ -40,7 +40,7 @@ Issues are enabled. Pull requests remain enabled for the owner's change process,
 
 PR creation restrictions are already configured on GitHub. They are separate from the branch rules above, which protect review and merge of owner changes. The contribution documentation and issue forms below still depend on their default-branch merge.
 
-The proposed [CI workflow](../.github/workflows/ci.yml) includes a `CI required` final gate that depends on the code checks. Keep the exact required status contexts in `main-integrity.json` aligned with the live ruleset; adding a workflow job alone does not make it a required check.
+The [CI workflow](../.github/workflows/ci.yml) includes a `CI required` final gate that depends on the code checks. After both jobs passed in [PR CI](https://github.com/CodeNyangi/type-the-change/actions/runs/41308365657), the live Main integrity ruleset was updated to require `CI required` from GitHub Actions and read back to verify it. Keep the exact required status contexts in `main-integrity.json` aligned with the live ruleset; adding a workflow job alone does not make it a required check.
 
 ## Initial setup
 
