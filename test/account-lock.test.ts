@@ -169,3 +169,46 @@ test('an ownerless directory left during release can be recovered', async () => 
     assert.deepEqual(await readdir(root), []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+for(const reason of ['EPERM','EACCES']){
+  test(`${reason} during recovery inspection retries without claiming a lock`,async()=>{
+    const root=await mkdtemp(join(tmpdir(),'ttc-account-lock-'));
+    const lockPath=join(root,'chatgpt-account.lock');
+    const marker=`${process.pid}-00000000-0000-4000-8000-000000000000.owner`;
+    await mkdir(lockPath);await writeFile(join(lockPath,marker),'');
+    const original=fs.readdir;let denied=false;
+    const readMock=mock.method(fs,'readdir',async(...args:Parameters<typeof fs.readdir>)=>{
+      if(String(args[0])===lockPath&&!denied){
+        denied=true;
+        // Another owner finishes release while this process is inspecting.
+        await fs.unlink(join(lockPath,marker));await fs.rmdir(lockPath);
+        throw Object.assign(new Error('private-storage-path'),{code:reason,syscall:'scandir'});
+      }
+      return original(...args);
+    });syncBuiltinESMExports();
+    try{
+      const release=await createAccountLock(root,1000)();assert.equal(denied,true);
+      const entries=await original(lockPath);assert.equal(entries.length,1);
+      assert.notEqual(entries[0],marker,'ownership needs a newly published private marker');
+      await release();assert.deepEqual(await original(root),[]);
+    }finally{readMock.mock.restore();syncBuiltinESMExports();await rm(root,{recursive:true,force:true});}
+  });
+  test(`${reason} that persists during inspection fails closed with the live owner intact`,async()=>{
+    const root=await mkdtemp(join(tmpdir(),'ttc-account-lock-'));
+    const lockPath=join(root,'chatgpt-account.lock');
+    const marker=`${process.pid}-00000000-0000-4000-8000-000000000000.owner`;
+    await mkdir(lockPath);await writeFile(join(lockPath,marker),'');
+    const original=fs.readdir;let attempts=0;
+    const readMock=mock.method(fs,'readdir',async(...args:Parameters<typeof fs.readdir>)=>{
+      if(String(args[0])===lockPath){attempts++;throw Object.assign(new Error('private-storage-path'),{code:reason,syscall:'scandir'});}
+      return original(...args);
+    });syncBuiltinESMExports();
+    try{
+      await assert.rejects(createAccountLock(root,100)(),error=>{
+        assert.ok(error instanceof AccountLockError);assert.deepEqual(error.cause,{code:reason,syscall:'scandir'});
+        assert.doesNotMatch(String(error)+JSON.stringify(error.cause),/private-storage-path/);return true;
+      });
+      assert.ok(attempts>=2);assert.deepEqual(await original(lockPath),[marker]);assert.deepEqual(await original(root),['chatgpt-account.lock']);
+    }finally{readMock.mock.restore();syncBuiltinESMExports();await rm(root,{recursive:true,force:true});}
+  });
+}

@@ -6,7 +6,8 @@
 - Accept alternative code within the guided range; matching text alone never completes a step. Invalidate evidence after code changes and request a new plan if a later anchor no longer fits.
 - Keep bounded, local decision notes; expose decision metadata through MCP without returning freeform notes. No automatic source edits, saves, or test execution.
 - Add a minimal prompt-and-cursor icon, a deliberately wrong practice proposal, and a captioned walkthrough recorded in real VS Code on a remote virtual display.
-- Expand local coverage to 164 tests and 162 headless layouts. Exact remote results are recorded in the [verification report](docs/judgment-workflow-0.3.0.md).
+- Retry transient account-lock inspection denial within the original deadline; persistent denial keeps the live owner intact and fails closed.
+- Expand local coverage to 168 tests and 162 headless layouts. Exact remote results are recorded in the [verification report](docs/judgment-workflow-0.3.0.md).
 
 ### Included audit fixes
 

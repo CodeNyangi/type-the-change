@@ -21,7 +21,7 @@ and filming run on a GitHub Linux virtual display; local browser checks are head
 
 ## Evidence
 
-- macOS background application suite: **164 passed**, no skips.
+- macOS background application suite: **168 passed**, no skips.
 - Production webview: **162 rendered cases** (18 states × three widths × three
   representative themes), both shortcut conventions, note controls, focus recovery,
   IME-event guards, and long-code keyboard scrolling; no JavaScript/CSP errors.
@@ -31,7 +31,7 @@ and filming run on a GitHub Linux virtual display; local browser checks are head
 - Native host: VS Code **1.142.0** and minimum **1.100.0** passed after updating the
   test to reacquire an editor following a real diff transition. Tests cover native
   typing with automatic pairs, indentation, CRLF, sequential edits, and deletion.
-- Windows application suite passes with the two existing POSIX named-pipe skips.
+- Windows stress testing exposed a transient `scandir` permission failure during competing lock recovery. Permission denial now waits within the same deadline without granting ownership or deleting an unverified owner. Four deterministic regressions cover transient and persistent denial; the Windows stress rerun is required before release.
 - Current workflow and filming results: [PR checks](https://github.com/CodeNyangi/type-the-change/pull/1/checks).
   The full workflow passed at `d9aff39`: [all-green run](https://github.com/CodeNyangi/type-the-change/actions/runs/41321242914). The real tutorial lasts approximately 39 seconds.
 

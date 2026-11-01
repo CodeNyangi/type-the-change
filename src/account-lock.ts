@@ -106,17 +106,25 @@ export function createAccountLock(storageDirectory: string, waitMilliseconds = 2
           if (reason === 'EPERM' || reason === 'EACCES') {
             // Windows can report access denied for an occupied destination.
             // A concurrent releaser may remove that destination before lstat.
-            // Retry ENOENT within the same deadline; other inspection failures
-            // remain errors. Persistent denial without a destination is still
+            // Retry disappearance or temporary permission denial within the
+            // same deadline; other inspection failures remain errors. Persistent denial without a destination is still
             // reported as a storage error when the bounded wait expires.
             try { await lstat(lockDirectory); }
             catch (inspectionError) {
-              if (code(inspectionError) !== 'ENOENT') throw inspectionError;
-              vanishedDestinationError = error;
+              const inspectionReason = code(inspectionError);
+              if (!['ENOENT', 'EPERM', 'EACCES'].includes(inspectionReason ?? '')) throw inspectionError;
+              vanishedDestinationError = inspectionReason === 'ENOENT' ? error : inspectionError;
             }
           }
         }
-        await recoverDeadOwner(lockDirectory);
+        try { await recoverDeadOwner(lockDirectory); }
+        catch (inspectionError) {
+          // Windows can deny scandir/lstat while another successor removes a
+          // dead owner's directory. Denial is never evidence of ownership or
+          // death: wait and retry the atomic acquisition, within the same bound.
+          if (!['EPERM', 'EACCES'].includes(code(inspectionError) ?? '')) throw inspectionError;
+          vanishedDestinationError = inspectionError;
+        }
         if (Date.now() >= until) {
           if (vanishedDestinationError) throw vanishedDestinationError;
           throw new AccountLockError('다른 VS Code 창에서 ChatGPT 연결을 처리하고 있어요. 잠시 후 다시 시도해 주세요.');

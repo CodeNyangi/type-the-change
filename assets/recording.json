@@ -1,9 +1,9 @@
 {
   "success": true,
-  "durationSeconds": 39.123,
+  "durationSeconds": 38.418,
   "environment": "Real VS Code 1.142.0, isolated Linux CI display",
   "fixture": "examples/judgment",
-  "sourceCommit": "25c468c38a80e3d2fe9ab843cc378c071b7c0695",
+  "sourceCommit": "5c47f578aaae52d836a5fb08c74d7b123a3a82eb",
   "limitations": [
     "Deliberately wrong local exercise, not a live AI response.",
     "One example input, not proof of general correctness or learning gain.",
