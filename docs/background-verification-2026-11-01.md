@@ -4,13 +4,13 @@ The user's Mac desktop, current workspace, installed VS Code windows, and existi
 
 ## Results and evidence
 
-The expanded audit fixes passed [this complete CI run](https://github.com/CodeNyangi/type-the-change/actions/runs/41310363946) at commit `b1ae4d0`. Subsequent documentation, JSON-error wording, and packaging-dependency changes are covered by [the latest PR checks](https://github.com/CodeNyangi/type-the-change/pull/1/checks). This is an executable coverage report, not a claim that every possible editor setting, account, OS input method, or human learning outcome has been tested.
+The expanded audit fixes passed [this complete CI run](https://github.com/CodeNyangi/type-the-change/actions/runs/41311608443) at commit `8765bb2`. Report-only revisions are covered by [the latest PR checks](https://github.com/CodeNyangi/type-the-change/pull/1/checks). This is an executable coverage report, not a claim that every possible editor setting, account, OS input method, or human learning outcome has been tested.
 
 | Area | Verified result | Boundary |
 | --- | --- | --- |
-| macOS background unit/integration tests | 148 passed, no skips | No native Mac window launched; VS Code/provider boundaries use mocks where stated in tests |
-| Linux application tests | 148 passed, no skips | Includes real filesystem, subprocess, loopback OAuth callback, and stdio MCP cases |
-| Windows application tests | 146 passed; 2 POSIX named-pipe cases skipped | Windows has a different named-pipe API; these POSIX cases run on macOS/Linux |
+| macOS background unit/integration tests | 151 passed, no skips | No native Mac window launched; VS Code/provider boundaries use mocks where stated in tests |
+| Linux application tests | 151 passed, no skips | Includes real filesystem, subprocess, loopback OAuth callback, and stdio MCP cases |
+| Windows application tests | 149 passed; 2 POSIX named-pipe cases skipped | Includes 20 rounds of competing account-lock recovery; the two POSIX cases run on macOS/Linux |
 | VS Code 1.142.0 native host | Passed, including native keyboard cases | Real Linux editor, virtual display; automatic pairs, indentation, CRLF, deletion, lifecycle and layout checks |
 | Minimum supported VS Code 1.100.0 | Passed, including native keyboard cases | Separate Linux host job validates the manifest's minimum version |
 | Real VS Code UI | 10 flow groups passed | Real Electron workbench and extension webview; JSON file-dialog result alone is substituted |
@@ -44,7 +44,7 @@ The automated test refuses to launch outside Linux CI with a display. It cannot 
 - **Concurrent account refresh:** Two extension hosts could rotate one token twice and let a later failure erase the successful refresh. Sign-in, token access/refresh and sign-out now serialize and reload SecretStorage after acquiring a shared local lock.
 - **Incomplete reconnect handling:** All documented terminal refresh-token errors now clear unusable credentials and restore reconnect guidance. Transient failures preserve credentials.
 
-Account locks live under the extension's global storage directory and contain only a PID and random owner marker. Credentials remain in SecretStorage. A prepared nonempty directory is published atomically; recovery requires a confirmed dead PID and removes only that owner's marker. Live PIDs, permission denial and PID reuse fail closed. Waiting is cancellable and bounded at 20 seconds; another window's browser sign-in may continue longer and require a retry. Tests use real child processes and competing recovery attempts after killing an owner. This coordinates updated extension hosts sharing the same local storage path, not different machines. A crash before publication may leave a harmless candidate directory containing no credentials.
+Account locks live under the extension's global storage directory and contain only a PID and random owner marker. Credentials remain in SecretStorage. A prepared nonempty directory is published atomically; recovery requires a confirmed dead PID and removes only that owner's marker. Live PIDs, permission denial and PID reuse fail closed. Waiting is cancellable and bounded at 20 seconds; another window's browser sign-in may continue longer and require a retry. Tests use real child processes and competing recovery attempts after killing an owner, with 20 rounds on Windows CI. Deterministic regressions cover a Windows permission-style rename collision followed by another process removing the old lock before inspection; that removal is retried within the existing deadline. This coordinates updated extension hosts sharing the same local storage path, not different machines. A crash before publication may leave a harmless candidate directory containing no credentials.
 
 ## Dependency verification
 
