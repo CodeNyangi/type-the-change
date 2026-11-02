@@ -126,7 +126,9 @@ try {
   // incomplete command list. Wait for the extension's visible entry point.
   await page.locator('.statusbar-item').filter({hasText: 'Type the Change'}).waitFor({state: 'visible', timeout: 60_000});
   await page.keyboard.press('Control+p');
-  await page.locator('.quick-input-widget input[type="text"]').fill(first);await page.keyboard.press('Enter');
+  await page.locator('.quick-input-widget input[type="text"]').fill(first);
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'first.ts'}).first().waitFor({state:'visible'});
+  await page.keyboard.press('Enter');await page.locator('.quick-input-widget').waitFor({state:'hidden'});
   await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().click();
   let view = await panel();
   await view.locator('#home').waitFor({state: 'visible'});

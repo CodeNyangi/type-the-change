@@ -45,7 +45,9 @@ try{
   if(await page.locator('.part.sidebar').isVisible())await page.keyboard.press('Control+b');
   if(await page.locator('.part.auxiliarybar').isVisible())await page.keyboard.press('Control+Alt+b');
   await page.keyboard.press('Control+p');
-  await page.locator('.quick-input-widget input[type="text"]').fill('total.js');await page.keyboard.press('Enter');
+  await page.locator('.quick-input-widget input[type="text"]').fill('total.js');
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'total.js'}).first().waitFor({state:'visible'});
+  await page.keyboard.press('Enter');await page.locator('.quick-input-widget').waitFor({state:'hidden'});
   await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().waitFor({state:'visible'});
   recorder=spawn('ffmpeg',['-y','-loglevel','error','-f','x11grab','-video_size','1440x1000','-framerate','24','-i',process.env.DISPLAY,'-an','-c:v','libx264','-preset','ultrafast','-crf','18',path.join(output,'capture.mp4')],{stdio:['pipe','inherit','inherit']});
   recordingFinished=once(recorder,'exit');started=Date.now();

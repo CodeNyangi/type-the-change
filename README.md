@@ -16,7 +16,7 @@ Click the **`>_` icon at the top right of your code editor**, or press **⌘⌥T
 
 1. **Predict** one result. Press **⌘Enter / Ctrl+Enter**.
 2. **Edit** in your usual editor. Press **⌘⌥Enter / Ctrl+Alt+Enter** to save and check.
-3. **Decide** from the result and diff. Write one reason, then **⌘Enter / Ctrl+Enter → ← → → Enter** to keep, reject, or defer.
+3. **Decide** from the result and diff. Write one reason. Press **⌘Enter / Ctrl+Enter**, choose with **← / →**, then **Enter** to record.
 
 The demo suggestion is deliberately wrong. Matching its text or passing a check never approves a change. **⌘⌥T / Ctrl+Alt+T** returns to the code; **How to** reopens the video.
 
