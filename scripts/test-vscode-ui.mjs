@@ -132,6 +132,7 @@ try {
   await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().click();
   let view = await panel();
   await view.locator('#home').waitFor({state: 'visible'});
+  assert.equal(await view.locator('html').getAttribute('lang'),'en');
   await view.locator('#tutorial').waitFor({state:'visible'});
   report.checks.push('The editor title icon opens the guide directly and exposes the short walkthrough.');
   assert.equal(await view.locator('#generate').isDisabled(), true);
@@ -144,12 +145,12 @@ try {
   await toggleFile(second);
   await toggleFile('scale/module-4999.ts');await toggleFile('scale/module-4999.ts');
   await page.locator('.quick-input-widget input[type="text"]').press('Enter');
-  await textIs(view, '#files', '파일 2개');
+  await textIs(view, '#files', 'Files: 2');
   assert.ok((await view.locator('#files').getAttribute('title')).includes(second));
   await view.locator('#files').click();
   await page.locator('.quick-input-widget input[type="text"]').waitFor({state: 'visible'});
   await page.keyboard.press('Escape');
-  await textIs(view, '#files', '파일 2개');
+  await textIs(view, '#files', 'Files: 2');
   report.checks.push('One-million-line generated repository: a file beyond the initial 200 candidates is discoverable by name, without sending its contents to a model.');
   report.checks.push('Real Quick Pick selects files across folders and Korean paths; cancel preserves selection.');
   await page.screenshot({path: path.join(artifacts, 'home-files.png')});
