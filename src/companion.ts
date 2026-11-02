@@ -179,7 +179,9 @@ export class Companion {
     known=combined();context=existingExplanation(known,roots);
     if(context||known.some(item=>item.kind==='assistant'&&readLesson(item.text))||this.explanationExhausted)break;
    }
-   if(!cursor)this.explanationExhausted=true;
+   // Do not keep walking a large chat every polling tick. A manual check may
+   // continue from the cursor; new incoming messages are still read normally.
+   this.explanationExhausted=true;
   }
   const candidates=[...known].reverse().filter(item=>item.kind==='assistant');
   let candidate:ActivityItem|undefined,card;
@@ -201,7 +203,7 @@ export class Companion {
   }
   if(selection===this.epoch&&!this.disposed)this.state.lessonStatus='unverified';
  }
- refreshLesson(){this.lessonKey='';this.refresh();}
+ refreshLesson(){this.lessonKey='';this.explanationExhausted=false;this.refresh();}
  requestState(id:string,status:CompanionState['lessonRequest'],requestId?:string){if(status)this.requests.set(id,{status,requestId:requestId||this.requests.get(id)?.requestId});else this.requests.delete(id);if(this.selected===id){this.state.lessonRequest=status;this.emit();}}
  canRequest(id:string){return !['sending','queued','uncertain'].includes(this.requests.get(id)?.status||'');}
  async reviewFile(file:string,line?:number,comparison?:EditorComparison){

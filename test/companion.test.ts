@@ -151,6 +151,11 @@ test('edit history lookup bounds each search and stops repeated cursors',async()
  let repeat=false;const {model,cursors}=await editHistoryFixture(async cursor=>({data:[],nextCursor:repeat?cursor:'p'+(Number(cursor.slice(1))+1)}));
  try{await model.olderEdits();assert.equal(cursors.length,8);assert.equal(model.state.nextEdits,'p9');assert.equal(model.state.editsLoading,false);repeat=true;await model.olderEdits();assert.equal(cursors.length,9);assert.equal(model.state.nextEdits,undefined);}finally{model.dispose();}
 });
+test('visible explanation lookup stops after one bounded search instead of walking old history every polling tick',async()=>{
+ const {model,cursors}=await editHistoryFixture(async cursor=>({data:[],nextCursor:'p'+(Number(cursor.slice(1))+1)}));
+ const wait=async(check:()=>boolean)=>{const end=Date.now()+3000;while(!check()&&Date.now()<end)await new Promise(r=>setTimeout(r,10));assert.ok(check());};
+ try{model.track(true);await wait(()=>cursors.length===8&&model.state.lessonStatus==='missing');const previous=model.state.updatedAt;model.refresh();await wait(()=>model.state.updatedAt!==previous);assert.equal(cursors.length,8);model.track(false);}finally{model.dispose();}
+});
 test('failed edit history can be retried without erasing live activity',async()=>{
  let fail=true;const {model}=await editHistoryFixture(async()=>{if(fail)throw Error('unavailable');return {data:[recordedEdit]};});
  try{await model.olderEdits();assert.equal(model.state.editsError,true);assert.equal(model.state.editsLoading,false);assert.equal(model.state.items[0].id,'latest');fail=false;await model.olderEdits();assert.equal(model.state.editsError,false);assert.equal(model.state.editHistory?.[0].id,'past-edit');}finally{model.dispose();}
