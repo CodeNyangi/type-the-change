@@ -1,6 +1,7 @@
 // This test intentionally runs only on a Linux CI virtual display. It never
 // launches the installed editor or takes focus on a developer's Mac.
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -78,20 +79,9 @@ async function decide(view, decision='keep', evidence='실제 변경 내역에�
   await view.locator('#'+decision).click();
 }
 
-async function toggleFile(relative) {
-  const input = page.locator('.quick-input-widget input[type="text"]');
-  await input.fill(relative);
-  const row = page.locator('.quick-input-list .monaco-list-row').filter({hasText: relative}).first();
-  await row.waitFor({state: 'visible'});
-  await row.locator('.monaco-checkbox').click();
-}
 
 try {
   await mkdir(path.join(workspace, 'src', '한글 경로'), {recursive: true});
-  await mkdir(path.join(workspace,'scale'),{recursive:true});
-  const scaleSource=Array.from({length:200},(_,i)=>`export const value${i} = ${i};`).join('\n')+'\n';
-  for(let start=0;start<5000;start+=50)await Promise.all(Array.from({length:50},(_,i)=>writeFile(path.join(workspace,'scale',`module-${start+i}.ts`),scaleSource)));
-  report.scaleFixture={files:5000,linesPerFile:200,totalLines:1000000};
   await mkdir(path.join(profile, 'User'), {recursive: true});
   await mkdir(artifacts, {recursive: true});
   const first = 'src/first.ts', second = 'src/한글 경로/second.ts';
@@ -99,6 +89,9 @@ try {
   await writeFile(path.join(workspace, first), firstBefore);
   await writeFile(path.join(workspace, second), secondBefore);
   await writeFile(path.join(workspace, 'pending.ts'), 'export const pending = 1;\n');
+  await writeFile(path.join(workspace, 'source.ts'), 'export const value = 1;\n');
+  const git=(...args)=>execFileSync('git',args,{cwd:workspace});git('init','-q');git('config','user.name','UI Test');git('config','user.email','test@example.test');git('config','core.hooksPath',path.join(root,'none'));git('config','commit.gpgSign','false');git('add','source.ts');git('commit','-qm','base');
+  await writeFile(path.join(workspace, 'source.ts'), 'export const value = 2;\n');
   await writeFile(path.join(profile, 'User/settings.json'), JSON.stringify({
     'workbench.startupEditor': 'none', 'workbench.colorTheme': 'Default Dark Modern',
     'workbench.enableExperiments': false, 'telemetry.telemetryLevel': 'off',
@@ -114,7 +107,7 @@ try {
   ]}));
   const executablePath = await downloadAndUnzipVSCode('1.142.0');
   const env = {...process.env};
-  delete env.ELECTRON_RUN_AS_NODE;
+  delete env.ELECTRON_RUN_AS_NODE;env.TTC_OBSERVER_WORKTREE=workspace;
   app = await electron.launch({executablePath, env, timeout: 60_000, args: [
     workspace, `--user-data-dir=${profile}`, `--extensions-dir=${path.join(root, 'extensions')}`,
     `--extensionDevelopmentPath=${process.cwd()}`, '--disable-workspace-trust',
@@ -136,16 +129,19 @@ try {
   assert.equal(await view.locator('html').getAttribute('lang'),'en');
   assert.equal(await view.locator('#intent').count(),0);
   await view.locator('#thread-list button').filter({hasText:'Existing Codex chat'}).click();
-  await view.locator('#activity-list').filter({hasText:'Read the existing work.'}).waitFor({state:'visible'});
-  await view.locator('#codex-open').waitFor({state:'visible'});
-  report.checks.push('Existing Codex chat appears with public activity and no independent request composer.');
-  await page.screenshot({path:path.join(artifacts,'codex-companion.png')});
-  await view.locator('#options summary').first().click();
+  await textIs(view,'#explanation','내보내는 상수가 1에서 2로 바뀌었습니다.');
+  assert.equal(await view.locator('#choices,#question,#answer,#activity-list').count(),0);
+  await view.locator('#codex').waitFor({state:'visible'});
+  await view.locator('#lesson-source > summary').click();await view.locator('#open-diff').click();
+  await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
+  assert.equal(await readFile(path.join(workspace,'source.ts'),'utf8'),'export const value = 2;\n');
+  report.checks.push('A Codex-authored explanation is immediately visible without a quiz; its recorded code opens as an immutable comparison.');
+  await page.screenshot({path:path.join(artifacts,'codex-explanation.png')});
 
   await app.evaluate(({dialog}, file) => {
     dialog.showOpenDialog = async () => ({canceled: false, filePaths: [file]});
   }, planFile);
-  await view.locator('[data-command="import"]').click();
+  await command('Type the Change: Open a Plan');
   view = await panel('guide');
   await view.locator('#guide').waitFor({state: 'visible'});
   assert.equal(await view.locator('#proposal').isVisible(), false);
@@ -194,10 +190,11 @@ try {
   await view.locator('#conversation-tab').click();
   view = await panel();
   await view.locator('#chat-toggle').waitFor({state: 'visible'});
-  assert.equal(await view.locator('#thread-name').innerText(),'Existing Codex chat');
-  report.checks.push('New request returns to the composer and preserves its draft.');
+  assert.equal(await view.locator('#chat-toggle').innerText(),'Existing Codex chat');
+  await view.locator('#explanation').waitFor({state:'visible'});
+  report.checks.push('Leaving optional practice returns to the original Codex explanation.');
 
-  await view.locator('#demo').click();view=await panel('guide');await view.locator('#guide').waitFor({state:'visible'});
+  await command('Type the Change: Practice Editing & Checking');view=await panel('guide');await view.locator('#guide').waitFor({state:'visible'});
   await page.screenshot({path:path.join(artifacts,'learning-first-look.png')});
   await focusSource(view);await page.keyboard.type('  return tasks.filter(task => task.done);');await statusIs(view,'editing');
   await page.keyboard.press('Control+Alt+Enter');
@@ -210,7 +207,7 @@ try {
   await page.screenshot({path:path.join(artifacts,'reject-alternative.png')});
   await view.locator('#end').click();view=await panel();await view.locator('#chat-toggle').waitFor({state:'visible'});
   assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('task.done')));
-  await view.locator('#demo').click();view=await panel('guide');
+  await command('Type the Change: Practice Editing & Checking');view=await panel('guide');
   await focusSource(view);await page.keyboard.type('  return tasks.filter(task => !task.done);');await statusIs(view,'matched');
   await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=passed]').waitFor({state:'visible'});
   assert.equal(await page.locator('.terminal-wrapper').first().isVisible(),false,'checks must not open or focus the terminal');
@@ -225,8 +222,7 @@ try {
     version: 1, title: 'MCP에서 받은 수정안', intent: '대기 중인 수정안을 열기',
     steps: [{file: 'pending.ts', before: '1', after: '2', reason: '값 수정'}],
   }));
-  if (!(await view.locator('[data-command="loadPending"]').isVisible())) await view.locator('#options > summary').click();
-  await view.locator('[data-command="loadPending"]').click();view=await panel('guide');
+  await command('Type the Change: Open MCP Plan');view=await panel('guide');
   await textIs(view, '#title', 'MCP에서 받은 수정안');
   await view.locator('#file').waitFor({state: 'visible'});
   assert.equal(await readFile(path.join(workspace, 'pending.ts'), 'utf8'), 'export const pending = 1;\n');
@@ -239,13 +235,12 @@ try {
   await app.evaluate(({dialog}, file) => {
     dialog.showOpenDialog = async () => ({canceled: false, filePaths: [file]});
   }, invalidPlan);
-  if (!(await view.locator('[data-command="import"]').isVisible())) await view.locator('#options > summary').click();
-  await view.locator('[data-command="import"]').click();
+  await command('Type the Change: Open a Plan');
   await view.locator('#error').waitFor({state: 'visible'});
   await textIs(view, '#error', 'This suggestion is invalid. Choose a Type the Change JSON file.');
   assert.equal(await view.locator('#chat-toggle').isVisible(), true);
   await page.screenshot({path: path.join(artifacts, 'invalid-import-recovery.png')});
-  report.checks.push('Invalid JSON reports an error while keeping the usable composer available.');
+  report.checks.push('Invalid JSON reports an error while keeping the Codex explanation available.');
   report.success = true;
   console.log(`VS CODE UI PASSED: ${report.checks.length} flow groups.`);
 } catch (error) {

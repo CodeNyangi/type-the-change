@@ -8,4 +8,6 @@ The webview payload omits raw messages, worktree inventories, unrelated editor s
 
 Regression coverage includes malformed and oversized cards, foreign paths, fabricated examples, historical snapshots, inert provider text, immediately visible explanations, absence of quiz controls, preserved optional comparison state, code wrapping and common-indent removal and the absence of operational text on the learning screen. The UI matrix covers Korean/English, three themes, three widths and nine states. Native-host tests verify read-only card comparisons and source preservation alongside retained optional plan workflows.
 
+CI enters optional imported-plan and practice flows through their current command-palette commands, rather than removed home-screen controls. Invalid plan errors retain their own message instead of being presented as Codex connection failures. The optional earlier-workflow recorder uses the same current entry point.
+
 Live checks use a real explanation authored in the existing owning Codex chat, matched to the actual recorded edit. They verify immediate explanation display, absence of quiz controls and a native immutable comparison for a removed worktree. Test fixtures and layout screenshots alone are not evidence of that handoff or of a measured learning outcome. Private live evidence stays under ignored artifacts.

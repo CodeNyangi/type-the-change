@@ -72,7 +72,7 @@ jobs:
             artifacts/vscode-ui/
             artifacts/headless-webview/
             artifacts/tutorial/
-            artifacts/companion-ui/
+            artifacts/lesson-ui/
             artifacts/real-companion/editor-follow.json
 
   minimum:

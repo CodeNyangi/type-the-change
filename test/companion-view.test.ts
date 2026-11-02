@@ -29,6 +29,9 @@ test('code presentation removes common indentation while preserving the guarded 
 test('card text stays inert and source opens only on an explicit action',()=>{
  const f=fixture();try{f.send({...state,lesson:{...lesson,card:{...card,title:'<script>evil()</script>',explanation:'<img src=x onerror=evil()>'}}});assert.equal(f.doc.querySelector('img'),null);assert.equal(f.doc.querySelectorAll('script').length,1);f.click('#open-diff');assert.deepEqual(f.messages.at(-1),{command:'openLessonDiff'});}finally{f.close();}
 });
+test('an invalid imported plan reports its own error instead of a Codex connection error',()=>{
+ const f=fixture(false);try{const message='This suggestion is invalid. Choose a Type the Change JSON file.';f.send({...state,actionError:message});assert.equal((f.doc.querySelector('#error') as HTMLElement).hidden,false);assert.equal(f.doc.querySelector('#error')!.textContent,message);}finally{f.close();}
+});
 test('task picker limits the current project to five and allows explicit expansion',()=>{
  const f=fixture(false);try{f.send({...state,selected:undefined,threads:Array.from({length:12},(_,i)=>({...thread,id:String(i),title:'Task '+i,cwd:i<9?'/repo':'/other'}))});assert.equal(f.doc.querySelectorAll('#thread-list button').length,5);f.click('#show-more');assert.equal(f.doc.querySelectorAll('#thread-list button').length,9);f.click('#scope-toggle');f.click('#show-more');f.click('#show-more');assert.equal(f.doc.querySelectorAll('#thread-list button').length,12);}finally{f.close();}
 });

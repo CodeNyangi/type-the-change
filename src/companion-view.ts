@@ -61,7 +61,7 @@ function renderCard(){
 function render(){
  if(thread!==state.selected?.id){thread=state.selected?.id||'';prepared=false;cardId='';$('picker').hidden=!!thread;$('settings').hidden=true;$('chat-filter').value='';}
  if(state.lesson?.id&&state.lesson.id!==cardId)prepared=false;
- $('chat-toggle').textContent=state.selected?.title||labels.choose;$('selected').hidden=!state.selected;$('codex').hidden=!state.selected;$('error').hidden=!state.error;$('error').textContent=state.error?labels.error:'';
+ $('chat-toggle').textContent=state.selected?.title||labels.choose;$('selected').hidden=!state.selected;$('codex').hidden=!state.selected;$('error').hidden=!state.error&&!state.actionError;$('error').textContent=state.actionError|| (state.error?labels.error:'');
  const hasCard=!!state.lesson;$('welcome').hidden=hasCard;$('lesson').hidden=!hasCard;
  $('prepare').disabled=!!state.loading||state.lessonStatus==='checking';$('welcome-text').textContent=state.lessonStatus==='checking'?labels.checking:state.lessonStatus==='unverified'?labels.unverified:${JSON.stringify(t('무엇이 달라졌고 왜 필요한지, 실제 코드와 함께 봅니다.','See what changed and why, alongside the actual code.'))};$('handoff-note').hidden=hasCard&&!prepared;$('handoff-note').textContent=prepared?labels.prepared:labels.prepareNote;$('retry').hidden=state.lessonStatus!=='unverified'&&!prepared;
  renderThreads();renderCard();

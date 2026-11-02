@@ -8,6 +8,7 @@
 - Match card code to an actual recorded edit in the same chat before displaying it, including immutable historical worktree snapshots.
 - Copy a bounded learning-card request and open the original Codex chat; TTC does not send it, start an agent or create a memory store.
 - Keep project task selection to five recent tasks. Remove transcript, branch, timestamp and edit inventories from the learner screen and its payload.
+- Align native CI and the optional walkthrough recorder with the current entry points; keep imported-plan errors separate from Codex connection errors.
 
 ## 0.7.2 — 2026-11-02
 

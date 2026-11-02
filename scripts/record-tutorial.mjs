@@ -53,10 +53,10 @@ try{
   recordingFinished=once(recorder,'exit');started=Date.now();
   subtitle('Open Type the Change from the >_ icon.');await pause(1500);
   await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().click();
-  let view=await panel();await view.locator('#home').waitFor({state:'visible'});
+  let view=await panel('chat-toggle');await view.locator('#chat-toggle').waitFor({state:'visible'});
   subtitle('Open the included learning exercise. No account needed.');await pause(1600);
   await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},path.join(folder,'plan.json'));
-  await view.locator('#chat-options summary').click();await view.locator('[data-command="import"]').click();view=await panel('guide');await view.locator('#prediction').waitFor({state:'visible'});
+  await page.keyboard.press('F1');await page.locator('.quick-input-widget input[type="text"]').fill('>Type the Change: Open a Plan');await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'Type the Change: Open a Plan'}).first().click();view=await panel('guide');await view.locator('#prediction').waitFor({state:'visible'});
   await view.waitForFunction(()=>document.activeElement?.id==='prediction');
   subtitle('1. Predict. Ctrl+Enter returns to your code.');
   await typeField(view.locator('#prediction'),'Skip negatives: 10 + 20 = 30.');await page.keyboard.press('Control+Enter');
