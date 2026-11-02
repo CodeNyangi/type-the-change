@@ -1,17 +1,23 @@
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import type {WorkspaceOverview} from '../src/worktrees.js';
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 import path from 'node:path';
+import type {Companion} from '../src/companion.js';
 import type {Plan} from '../src/plan.js';
 
-interface SessionState {file:string;index:number;complete:boolean;status:string;judgment:{phase:string};replan:boolean;check?:{status:string;exitCode?:number}}
+interface SessionState {contextChanged?:boolean;file:string;index:number;complete:boolean;status:string;judgment:{phase:string};replan:boolean;check?:{status:string;exitCode?:number}}
 interface ExtensionApi {
+  companion:Companion;
   startPlan(plan:Plan,root:string):Promise<void>;
   next():Promise<void>;
   predict(value:string):Promise<void>;
   decide(value:{decision:string;evidence:string}):Promise<void>;
   stop():Promise<void>;
   getState():SessionState|null;
+  getWorkspace():WorkspaceOverview|undefined;
 }
 
 async function compare(api:ExtensionApi){
@@ -187,8 +193,8 @@ async function testNewRequestFromCommandPalette(api:ExtensionApi,root:string){
   const partial='export const value = ';await replaceDocument(document,partial);
   await vscode.commands.executeCommand('typeTheChange.start');
   assert.equal(api.getState()?.file,'new-request.ts','Start resumes the active guide');
-  await vscode.commands.executeCommand('typeTheChange.generate');
-  assert.equal(api.getState(),null,'Plan a Change opens the composer instead of keeping an active guide');
+  await vscode.commands.executeCommand('typeTheChange.showConversation');
+  assert.equal(api.getState()?.file,'new-request.ts','opening the composer preserves the active learning step');
   assert.equal(document.getText(),partial,'opening a new request preserves partial human edits');
   assert.equal(await readFile(file,'utf8'),original,'opening a new request does not save partial edits');
 
@@ -197,8 +203,9 @@ async function testNewRequestFromCommandPalette(api:ExtensionApi,root:string){
   assert.equal(api.getState()?.complete,true);
   await vscode.commands.executeCommand('typeTheChange.start');
   assert.equal(api.getState()?.complete,true,'Start also resumes a completed guide for review');
-  await vscode.commands.executeCommand('typeTheChange.generate');
-  assert.equal(api.getState(),null,'Plan a Change opens the composer from a completed guide');
+  await vscode.commands.executeCommand('typeTheChange.showConversation');
+  assert.equal(api.getState()?.complete,true,'opening the composer preserves a completed review');
+  await api.stop();
   assert.equal(document.getText(),replacement,'opening a new request preserves completed human edits');
   assert.equal(await readFile(file,'utf8'),original,'opening a new request does not save completed edits');
 }
@@ -219,11 +226,11 @@ async function assertGuideBesideSource(file:string,sourceFocused=false){
   let current=layout();
   // Layout and active-editor notifications arrive on separate RPC paths.
   // Require both to settle within the same bound before asserting either.
-  while((current.source?.viewColumn!==vscode.ViewColumn.One||current.guide?.group.viewColumn!==vscode.ViewColumn.Two||(sourceFocused&&current.focused?.document.uri.fsPath!==file))&&Date.now()<deadline){
+  while((current.source?.viewColumn!==vscode.ViewColumn.One||guideTabs().length!==0||(sourceFocused&&current.focused?.document.uri.fsPath!==file))&&Date.now()<deadline){
     await new Promise(resolve=>setTimeout(resolve,25));current=layout();
   }
   assert.equal(current.source?.viewColumn,vscode.ViewColumn.One,'the native source remains visible in the first editor group');
-  assert.equal(current.guide?.group.viewColumn,vscode.ViewColumn.Two,'the guide is the visible tab in a separate second editor group');
+  assert.equal(guideTabs().length,0,'learning shares the sidebar without taking an additional editor group');
   if(sourceFocused)assert.equal(current.focused?.document.uri.fsPath,file,'revealing the guide preserves native typing focus');
 }
 
@@ -333,19 +340,19 @@ async function testNativeTyping(api:ExtensionApi,root:string){
 }
 
 async function testDeletionAndPanel(api:ExtensionApi,root:string,nativeTyping:boolean){
-  await vscode.window.tabGroups.close(guideTabs(),true);
+  await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
   const original='export function quiet() {\n  console.log("debug");\n  return 1;\n}\n';
   const editor=await startFixture(api,root,'native-delete.ts',original,[{file:'native-delete.ts',before:'  console.log("debug");\n',after:'',reason:'Remove the debug output.'}]);
   const webviewTypes=vscode.window.tabGroups.all.flatMap(group=>group.tabs).flatMap(tab=>tab.input instanceof vscode.TabInputWebview?[tab.input.viewType]:[]);
-  assert.equal(guideTabs().length,1,`the guide opens beside the source; webview tab types: ${JSON.stringify(webviewTypes)}`);
+  assert.equal(guideTabs().length,0,'the learning view does not create an editor tab');
   console.log(`HOST TEST: guide tab identified as ${JSON.stringify(webviewTypes)}`);
   assert.equal(editor.document.getText(editor.selection),'  console.log("debug");\n');
-  await vscode.window.tabGroups.close(guideTabs(),true);
+  await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
   assert.equal(guideTabs().length,0,'closing the guide disposes its tab');
   assert.equal(api.getState()?.status,'untouched','closing the guide keeps the typing session');
   await vscode.commands.executeCommand('typeTheChange.start');
-  assert.equal(guideTabs().length,1,'Start reopens the existing session guide');
   await assertGuideBesideSource(editor.document.uri.fsPath);
+  assert.equal(guideTabs().length,0,'Start reopens the existing sidebar without an editor tab');
   assert.equal(editor.document.getText(),original,'closing and reopening never changes source');
   await vscode.commands.executeCommand('typeTheChange.focus');
   assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath,editor.document.uri.fsPath,'the focus command returns to native source');
@@ -372,7 +379,7 @@ async function testCommands(extension:vscode.Extension<ExtensionApi>){
   const registered=new Set(await vscode.commands.getCommands(true));
   const contributes=extension.packageJSON.contributes as {commands:{command:string}[];keybindings:{command:string;key:string;mac?:string;when:string}[]};
   for(const {command}of contributes.commands)assert.ok(registered.has(command),`${command} is registered and available from the command palette`);
-  for(const name of ['review','chooseFiles','chooseModel','usage'])assert.ok(contributes.commands.some(item=>item.command===`typeTheChange.${name}`),`${name} is declared for command-palette access`);
+  for(const name of ['review','refreshChats','setupLive','openCodexThread'])assert.ok(contributes.commands.some(item=>item.command===`typeTheChange.${name}`),`${name} is declared for command-palette access`);
   for(const command of ['typeTheChange.advance','typeTheChange.focus']){
     const shortcut=contributes.keybindings.find(binding=>binding.command===command);
     assert.ok(shortcut,`${command} has a keyboard binding`);
@@ -388,39 +395,54 @@ async function testIntegratedChecks(api:ExtensionApi,root:string){
   const unrelated=path.join(root,'unrelated.ts');await writeFile(unrelated,'export const untouched = 1;\n');
   const other=await vscode.workspace.openTextDocument(unrelated);await replaceDocument(other,'export const untouched = 2;\n');
   await vscode.commands.executeCommand('typeTheChange.demo');
-  const demo=vscode.window.visibleTextEditors.find(editor=>editor.document.fileName.endsWith(path.sep+'price.ts'))!.document;
-  await api.predict('The sum is 30 even when a negative occurs before the final price.');
-  await replaceDocument(demo,demo.getText().replace('return result;','break;'));
+  const demo=vscode.window.visibleTextEditors.find(editor=>editor.document.fileName.endsWith(path.sep+'tasks.js'))!.document;
+  assert.equal(api.getState()?.judgment.phase,'edit','the demo starts at the selected line without a duplicate prediction form');
+  await replaceDocument(demo,demo.getText().replace('return tasks;','return tasks.filter(task => task.done);'));
   await vscode.commands.executeCommand('typeTheChange.runCheck');
   assert.equal(api.getState()?.check?.status,'failed','real demo child process reports the wrong branch');
   assert.equal(api.getState()?.check?.exitCode,1);assert.equal(api.getState()?.judgment.phase,'review');assert.equal(api.getState()?.complete,false);
-  assert.match(await readFile(demo.uri.fsPath,'utf8'),/break;/,'explicit Save and Check saves the reviewed buffer');
+  assert.match(await readFile(demo.uri.fsPath,'utf8'),/filter/,'explicit Save and Check saves the reviewed buffer');
   assert.equal(await readFile(unrelated,'utf8'),'export const untouched = 1;\n','unrelated dirty files are not saved');assert.equal(other.isDirty,true);
-  await replaceDocument(demo,demo.getText().replace('break;','continue;'));
+  await replaceDocument(demo,demo.getText().replace('task => task.done','task => !task.done'));
   assert.equal(api.getState()?.check?.status,'stale','a subsequent edit invalidates task evidence immediately');
   await vscode.commands.executeCommand('typeTheChange.runCheck');
   assert.equal(api.getState()?.check?.status,'passed');assert.equal(api.getState()?.complete,false,'a zero exit never keeps the proposal');
-  await api.decide({decision:'keep',evidence:'The saved continue branch passed the four concrete example inputs.'});
+  await api.decide({decision:'keep',evidence:'The task list hides completed items and passes all four checks.'});
   const journal=JSON.parse(await readFile(path.join(path.dirname(demo.uri.fsPath),'.type-the-change/review.json'),'utf8'));
   assert.equal(journal.records.at(-1).check.exitCode,0);assert.equal(journal.records.at(-1).check.sourceHash,journal.records.at(-1).sourceHash);
   await api.stop();
 }
 
+async function testChangedBaseline(api:ExtensionApi,root:string){
+  const exec=promisify(execFile),run=(args:string[])=>exec('git',['-c','core.hooksPath='+path.join(root,'no-hooks'),'-c','commit.gpgSign=false','-c','user.name=Fixture','-c','user.email=fixture@example.invalid',...args],{cwd:root});
+  await run(['init','-b','main']);const file=path.join(root,'baseline.ts');await writeFile(file,'export const value = 1;\n');await run(['add','baseline.ts']);await run(['commit','-m','fixture']);
+  const wait=async(check:()=>boolean)=>{const end=Date.now()+8000;while(!check()&&Date.now()<end)await new Promise(resolve=>setTimeout(resolve,50));assert.ok(check(),'workspace state catches up');};
+  await vscode.commands.executeCommand('typeTheChange.refreshWorkspace');await wait(()=>!!api.getWorkspace()?.worktrees.find(tree=>tree.current)?.head);
+  await api.startPlan({version:1,title:'Baseline',intent:'Change the value',steps:[{file:'baseline.ts',before:'export const value = 1;',after:'export const value = 2;',reason:'Use the new value.'}]},root);
+  await replaceDocument(await vscode.workspace.openTextDocument(file),'export const value = 2;\n');await compare(api);
+  await writeFile(path.join(root,'concurrent.txt'),'concurrent change');await run(['add','concurrent.txt']);await run(['commit','-m','concurrent']);
+  await vscode.commands.executeCommand('typeTheChange.refreshWorkspace');await wait(()=>!!api.getState()?.contextChanged);
+  await assert.rejects(api.decide({decision:'keep',evidence:'old evidence'}),/baseline|기준/,'a changed commit cannot silently accept an old learning baseline');
+  assert.equal(api.getState()?.complete,false);await api.stop();
+}
+
 export async function run(){
+  const stage=async(name:string,action:()=>Promise<unknown>)=>{console.log(`HOST TEST: ${name}`);await action();};
   const root=process.env.TTC_HOST_TEST_ROOT!;
   const file=path.join(root,'sample.ts'),original='export function greet() {\n  return "hi";\n}\n';
   await writeFile(file,original);
   const extension=vscode.extensions.all.find(e=>e.id.toLowerCase()==='codenyangi.type-the-change');assert.ok(extension,'extension discovered');
   const api=await extension.activate() as ExtensionApi;
+  await vscode.workspace.getConfiguration('typeTheChange').update('codexPath',path.join(extension.extensionPath,'test/fixtures/codex-observer.mjs'),vscode.ConfigurationTarget.Global);
   await testCommands(extension as vscode.Extension<ExtensionApi>);
-  // Reproduce the real first-run flow: the home webview initially occupies the
-  // only group, then importing/starting guidance must leave both views visible.
+  // Starting learning from chat keeps the source in the editor and guidance in
+  // the same sidebar; it must never open a second composer/editor group.
   await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   await vscode.commands.executeCommand('workbench.action.joinAllGroups');
   await vscode.commands.executeCommand('typeTheChange.start');
-  assert.equal(guideTabs().length,1,'the home panel opens in an otherwise empty workbench');
+  assert.equal(guideTabs().length,0,'home opens in the actual sidebar without an empty editor tab');
   const plan:Plan={version:1,title:'Greet warmly',intent:'Change the greeting',steps:[{file:'sample.ts',before:'  return "hi";',after:'  return "hello";',reason:'Keep the same function and change its return value.'}]};
-  await api.startPlan(plan,root);
+  await stage('first guide from sidebar',()=>api.startPlan(plan,root));
   await assertGuideBesideSource(file);
   let editor=vscode.window.visibleTextEditors.find(e=>e.document.uri.fsPath===file)!;assert.ok(editor);
   assert.equal(editor.document.getText(),original,'starting never edits source');
@@ -443,13 +465,36 @@ export async function run(){
   assert.equal(api.getState()?.complete,false,'editing or undo after completion invalidates the claim');
   assert.equal(await readFile(file,'utf8'),original,'extension does not save user edits');
   await api.stop();assert.equal(api.getState(),null);
-  await testMultipleFiles(api,root);
-  await testAsyncSessionChanges(api,root);
-  await testHiddenPriorFileChanges(api,root);
-  await testNewRequestFromCommandPalette(api,root);
+  await stage('multiple files',()=>testMultipleFiles(api,root));
+  await stage('session cancellation',()=>testAsyncSessionChanges(api,root));
+  await stage('hidden prior file changes',()=>testHiddenPriorFileChanges(api,root));
+  await stage('new request',()=>testNewRequestFromCommandPalette(api,root));
   const nativeTyping=await nativeTypingAvailable(root);
-  if(nativeTyping)await testNativeTyping(api,root);
-  await testDeletionAndPanel(api,root,nativeTyping);
-  await testIntegratedChecks(api,root);
+  if(nativeTyping)await stage('native typing',()=>testNativeTyping(api,root));
+  await stage('deletion and panel reopen',()=>testDeletionAndPanel(api,root,nativeTyping));
+  await stage('real task checks',()=>testIntegratedChecks(api,root));
+  await stage('concurrent worktree baseline',()=>testChangedBaseline(api,root));
+  await stage('existing Codex chat companion',()=>testCompanion(api,root));
   console.log(`HOST TEST PASSED: real task failure/pass, explicit scoped saving, unrelated dirty-file preservation, stale task results, judgment journal, deletion comparison, panel reopen, review diff, command registration, mismatch, prior-file divergence, stale operations, MCP status. Native keyboard cases: ${nativeTyping?'PASSED':'SKIPPED (see HOST TEST SKIP; editor-edit fallback is not keyboard verification)'}.`);
+}
+
+async function testCompanion(api:ExtensionApi,root:string){
+ const exec=promisify(execFile),run=(args:string[])=>exec('git',['-c','core.hooksPath='+path.join(root,'no-hooks'),'-c','commit.gpgSign=false','-c','user.name=Fixture','-c','user.email=fixture@example.invalid',...args],{cwd:root});
+ const worktree=root+'-observer-worktree';
+ const wait=async(check:()=>boolean)=>{const end=Date.now()+12000;while(!check()&&Date.now()<end)await new Promise(resolve=>setTimeout(resolve,50));assert.ok(check(),'companion catches up: '+api.companion.state.error);};
+ await writeFile(path.join(root,'source.ts'),'export const value = 1;\n');await run(['add','source.ts']);await run(['commit','-m','observer fixture']);await run(['worktree','add','-b','observer-task',worktree]);
+ try{
+  await writeFile(path.join(worktree,'source.ts'),'export const value = 2;\n');process.env.TTC_OBSERVER_WORKTREE=worktree;api.companion.reconnect();
+  await vscode.commands.executeCommand('typeTheChange.start');await vscode.commands.executeCommand('typeTheChange.selectChat',{id:'chat-one'});
+  await wait(()=>api.companion.state.tree?.branch==='observer-task'&&!!api.companion.state.tree.changes?.length);
+  assert.equal(api.companion.state.selected?.id,'chat-one');assert.equal(api.companion.state.mode,'history');assert.equal(api.companion.state.selected?.runtime,'notLoaded');
+  await vscode.commands.executeCommand('typeTheChange.openChange',{file:'source.ts'});assert.ok(api.companion.state.review?.hunks.length);
+  await vscode.commands.executeCommand('typeTheChange.openReviewDiff');
+  assert.ok(vscode.window.tabGroups.all.some(g=>g.tabs.some(tab=>tab.input instanceof vscode.TabInputTextDiff&&tab.input.original.scheme==='ttc-codex-review'&&tab.input.modified.scheme==='ttc-codex-review')),'both comparison documents are immutable snapshots');
+  await vscode.commands.executeCommand('typeTheChange.practiceChange');const practice=vscode.window.activeTextEditor!.document;assert.equal(practice.uri.scheme,'untitled');
+  await replaceDocument(practice,api.companion.state.review!.hunks[0].after);assert.equal(api.companion.state.practice,'matched');
+  assert.equal(await readFile(path.join(worktree,'source.ts'),'utf8'),'export const value = 2;\n','practice never edits Codex worktree');
+  await writeFile(path.join(worktree,'source.ts'),'export const value = 3;\n');api.companion.refresh();await wait(()=>!!api.companion.state.review?.stale);
+  assert.equal(api.companion.state.review!.after,'export const value = 2;\n','new edits do not silently replace the learning snapshot');
+ }finally{api.companion.track(false);delete process.env.TTC_OBSERVER_WORKTREE;await run(['worktree','remove','--force',worktree]);}
 }

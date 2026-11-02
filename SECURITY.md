@@ -8,4 +8,4 @@ Include the affected version, a minimal reproduction, and the impact you observe
 
 If the private form is unavailable, open an issue requesting a private reporting channel without including the vulnerability details.
 
-Security boundaries include the configured MCP workspace, exact source anchors, explicit selection before AI requests, protected local token storage, and the absence of automatic source writes or command execution. A generated plan is untrusted guidance; inspect it before typing and test the resulting code.
+Security boundaries include the read-only Codex protocol allowlist, registered worktree validation, immutable comparison snapshots, protected source paths and the absence of agent execution or automatic source edits. Optional Codex hooks require Codex's own trust review and forward only bounded metadata over a private local socket. They cannot inject context, approve tools or continue a turn. The optional MCP/imported-plan workflow has separate path and check-task restrictions. See [Privacy](PRIVACY.md) for account and storage details.

@@ -105,8 +105,8 @@ test('empty model catalogs are valid; wrong envelopes and malformed JSON are cle
 test('model responses have both advertised and streamed byte limits',async()=>{
  for(const advertised of [true,false]){
   let cancelled=false;
-  const body=new ReadableStream<Uint8Array>({start(c){c.enqueue(new TextEncoder().encode('x'.repeat(300000)));},cancel(){cancelled=true;}});
-  mock.method(globalThis,'fetch',async()=>new Response(body,{headers:advertised?{'Content-Length':'300000'}:{}}));
+  const body=new ReadableStream<Uint8Array>({start(c){c.enqueue(new TextEncoder().encode('x'.repeat(8*1024*1024+1)));},cancel(){cancelled=true;}});
+  mock.method(globalThis,'fetch',async()=>new Response(body,{headers:advertised?{'Content-Length':String(8*1024*1024+1)}:{}}));
   await assert.rejects(listModels('token'),isInference);assert.equal(cancelled,true);assert.equal(body.locked,false);mock.restoreAll();
  }
 });
@@ -165,7 +165,17 @@ test('cancelling a pending models body closes it and returns AbortError',async()
 
 test('timeouts are visible retry errors, while network details stay private',async()=>{
  const controller=new AbortController();controller.abort(new DOMException('provider-detail','TimeoutError'));
- await assert.rejects(listModels('token',controller.signal),error=>error instanceof InferenceError&&/지연/.test(error.message));
+ await assert.rejects(listModels('token',controller.signal),error=>error instanceof InferenceError&&/시간이 초과/.test(error.message));
  mock.method(globalThis,'fetch',async()=>{throw new Error('private-token-in-transport');});
  await assert.rejects(generatePlan('token','model','intent',sourceFiles(),{}),error=>{assert.ok(error instanceof InferenceError);assert.doesNotMatch(error.message,/private-token/);return true;});
+});
+
+
+test('a realistic metadata-rich model catalog larger than a typing plan loads in either transport',async()=>{
+ const catalog={models:[{slug:'recommended',display_name:'Recommended',visibility:'list',instructions:'catalog metadata '.repeat(30000)},{slug:'hidden',display_name:'Hidden',visibility:'hide'},{slug:'second',display_name:'Second',visibility:'list'}]};
+ const bytes=new TextEncoder().encode(JSON.stringify(catalog));assert.ok(bytes.length>262144);
+ for(const advertised of [true,false]){
+  mock.method(globalThis,'fetch',async()=>new Response(new ReadableStream({start(c){for(let i=0;i<bytes.length;i+=8192)c.enqueue(bytes.slice(i,i+8192));c.close();}}),{headers:advertised?{'content-length':String(bytes.length)}:{}}));
+  assert.deepEqual(await listModels('token'),[{slug:'recommended',displayName:'Recommended'},{slug:'second',displayName:'Second'}]);mock.restoreAll();
+ }
 });

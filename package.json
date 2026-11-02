@@ -1,13 +1,13 @@
 {
   "name": "type-the-change",
   "displayName": "Type the Change",
-  "description": "Practice judgment with AI code. Predict, check, and decide.",
-  "version": "0.4.0",
+  "description": "%description%",
+  "version": "0.7.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "vscode": "^1.100.0",
+    "vscode": "^1.106.0",
     "node": ">=22"
   },
   "categories": [
@@ -39,18 +39,18 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "Reads selected source files and prepares local typing guidance."
+      "description": "%capability.untrustedWorkspaces%"
     },
     "virtualWorkspaces": {
       "supported": false,
-      "description": "This preview uses local files and a loopback sign-in callback."
+      "description": "%capability.virtualWorkspaces%"
     }
   },
   "contributes": {
     "commands": [
       {
         "command": "typeTheChange.start",
-        "title": "Type the Change: Start",
+        "title": "%command.start%",
         "shortTitle": "Type the Change",
         "icon": {
           "light": "assets/toolbar-light.svg",
@@ -58,76 +58,77 @@
         }
       },
       {
-        "command": "typeTheChange.generate",
-        "title": "Type the Change: Plan a Change with ChatGPT"
-      },
-      {
-        "command": "typeTheChange.signIn",
-        "title": "Type the Change: Continue with ChatGPT"
-      },
-      {
-        "command": "typeTheChange.signOut",
-        "title": "Type the Change: Sign Out"
-      },
-      {
         "command": "typeTheChange.import",
-        "title": "Type the Change: Open a Plan"
+        "title": "%command.import%"
       },
       {
         "command": "typeTheChange.loadPending",
-        "title": "Type the Change: Open MCP Plan"
+        "title": "%command.loadPending%"
       },
       {
         "command": "typeTheChange.next",
-        "title": "Type the Change: Compare Without Running a Check"
+        "title": "%command.next%"
       },
       {
         "command": "typeTheChange.advance",
-        "title": "Type the Change: Next Action"
+        "title": "%command.advance%"
       },
       {
         "command": "typeTheChange.runCheck",
-        "title": "Type the Change: Save and Check"
+        "title": "%command.runCheck%"
       },
       {
         "command": "typeTheChange.chooseCheck",
-        "title": "Type the Change: Select Check Task"
+        "title": "%command.chooseCheck%"
       },
       {
         "command": "typeTheChange.focus",
-        "title": "Type the Change: Go to Change"
+        "title": "%command.focus%"
       },
       {
         "command": "typeTheChange.stop",
-        "title": "Type the Change: End Session"
+        "title": "%command.stop%"
       },
       {
         "command": "typeTheChange.demo",
-        "title": "Type the Change: Try the Demo"
+        "title": "%command.demo%"
       },
       {
         "command": "typeTheChange.tutorial",
-        "title": "Type the Change: Watch the Walkthrough"
+        "title": "%command.tutorial%"
       },
       {
         "command": "typeTheChange.mcpConfig",
-        "title": "Type the Change: Show MCP Connection"
-      },
-      {
-        "command": "typeTheChange.chooseFiles",
-        "title": "Type the Change: Select Files"
-      },
-      {
-        "command": "typeTheChange.chooseModel",
-        "title": "Type the Change: Select Model"
-      },
-      {
-        "command": "typeTheChange.usage",
-        "title": "Type the Change: ChatGPT Usage"
+        "title": "%command.mcpConfig%"
       },
       {
         "command": "typeTheChange.review",
-        "title": "Type the Change: Review Changes"
+        "title": "%command.review%"
+      },
+      {
+        "command": "typeTheChange.openFolder",
+        "title": "%command.openFolder%"
+      },
+      {
+        "command": "typeTheChange.chooseLanguage",
+        "title": "%command.chooseLanguage%"
+      },
+      {
+        "command": "typeTheChange.moveView",
+        "title": "%command.moveView%",
+        "icon": "$(layout-sidebar-right)"
+      },
+      {
+        "command": "typeTheChange.refreshChats",
+        "title": "%command.refreshChats%"
+      },
+      {
+        "command": "typeTheChange.setupLive",
+        "title": "%command.setupLive%"
+      },
+      {
+        "command": "typeTheChange.openCodexThread",
+        "title": "%command.openCodexThread%"
       }
     ],
     "menus": {
@@ -135,6 +136,13 @@
         {
           "command": "typeTheChange.start",
           "when": "resourceScheme == file",
+          "group": "navigation@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "typeTheChange.moveView",
+          "when": "view == typeTheChange.launcher",
           "group": "navigation@1"
         }
       ]
@@ -173,12 +181,62 @@
           "message": 5
         }
       }
-    ]
+    ],
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "typeTheChange",
+          "title": "Type the Change",
+          "icon": "assets/toolbar-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "typeTheChange": [
+        {
+          "id": "typeTheChange.launcher",
+          "name": "Type the Change",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Type the Change",
+      "properties": {
+        "typeTheChange.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ko",
+            "en"
+          ],
+          "enumDescriptions": [
+            "%language.auto%",
+            "한국어",
+            "English"
+          ],
+          "default": "auto",
+          "description": "%language.description%"
+        },
+        "typeTheChange.codexPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%codexPath.description%"
+        },
+        "typeTheChange.codexSocket": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%codexSocket.description%"
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts",
     "test:host": "node scripts/test-host.mjs",
     "test:ui:vscode": "node scripts/test-vscode-ui.mjs",
     "test:ui:webview": "node --import tsx scripts/test-webview-headless.mjs",

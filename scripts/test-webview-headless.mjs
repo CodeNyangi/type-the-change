@@ -29,11 +29,21 @@ const reviewed={...judgment,phase:'review',reviewedHash:'reviewed-buffer'};
 const done={...reviewed,phase:'done',decision:'keep',evidence:'[10, -5, 20] → 30 확인.'};
 const step={judgment,canKeep:true,title:'음수 가격을 합계에서 제외',file:'src/가격 계산.ts',line:3,before:'    result += price;',after:'    if (price >= 0) {\n      result += price;\n    }',reason:'0 이상의 가격만 합계에 포함하는지 조건을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false};
 const longStep={...step,title:'이해하기 어려웠던 코드의 동작을 한 줄씩 살펴보며 변경합니다',file:'src/아주 긴 한글 경로/중첩된 구성 요소/가격계산과예외처리를확인하는파일이름.ts',after:'const 결과 = 상품목록.filter(상품 => 상품.price >= 0).map(상품 => ({ ...상품, 합계: 상품.price * 상품.quantity }));\nreturn 결과;',reason:'긴 경로와 코드는 화면 밖으로 밀려나지 않아야 합니다. 제안 코드는 가로로 이동해 끝까지 읽을 수 있습니다.'};
+const workspace={root:'/project/store',updatedAt:Date.now(),newChanges:true,worktrees:[{path:'/project/store',branch:'main',head:'abc123456789',current:true,changeCount:80,unsavedCount:1,conflictCount:1,overlap:2,groups:[{name:'services/',count:40},{name:'test/',count:30}],changes:[{path:'services/very-long-domain-handler.ts',status:' M',conflict:false}]},{path:'/tmp/store-feature',branch:'codex/a-long-branch-for-another-worktree-and-its-own-changes',head:'abc123456789',current:false,changeCount:4,overlap:2,changes:[{path:'services/very-long-domain-handler.ts',status:' M',conflict:false}]}]};
 const states={
   empty:{},
+  worktrees:{workspace,connected:true},
+  'stale-learning':{...step,workspace,contextChanged:true,canKeep:false},
+  'learning-chat':{...step,workspace,surface:'chat',connected:true},
+  connecting:{busy:true,connecting:true,phase:'브라우저에서 연결 중'},
+  project:{project:'Storefront',connected:true},
+  'model-error':{connected:true,error:'모델 목록을 불러오지 못했어요.',errorAction:'chooseModel'},
   connected:{connected:true,files:['src/가격 계산.ts','tests/가격 계산.test.ts'],model:'첫 번째 요청 전에 고르는 모델'},
-  busy:{busy:true,phase:'수정안을 만드는 중',files:['src/가격 계산.ts']},
+  busy:{busy:true,phase:'검색 중 · domain',project:'Storefront',connected:true,messages:[{role:'user',text:'해외 도메인은 어디서 추가해야 해?'},{role:'assistant',text:'도메인 설정을 확인하고 있습니다.',status:'streaming'}]},
+  answer:{project:'Storefront',connected:true,messages:[{role:'user',text:'해외 도메인은 어디서 추가해야 해?'},{role:'assistant',text:'**설정 두 곳을 확인하세요.**\n\n`src/domains.ts:8`에서 허용 도메인을, `src/routing.ts:24`에서 요청 분기를 관리합니다.\n\n설정을 변경하기 전에 인증 콜백 주소도 확인해 주세요.',status:'complete'}]},
+  stopped:{project:'Storefront',connected:true,messages:[{role:'assistant',text:'지금까지 찾은 설정은 `src/domains.ts`에 있습니다.',status:'stopped'}]},
   error:{error:'연결할 수 없어요. 다시 시도해 주세요. 오류가 반복되면 연결 상태를 확인해 주세요.'},
+  quickstart:{...step,guidedStart:true,title:'완료한 할 일 숨기기',file:'tasks.js',line:4,before:'  return tasks;',after:'  return tasks.filter(task => !task.done);',reason:'완료하지 않은 할 일만 남깁니다.',total:1},
   predict:{...step,judgment:{phase:'predict',prediction:'',evidence:''}},
   review:{...step,judgment:reviewed},
   rejected:{...step,judgment:{...done,decision:'reject'}},
@@ -68,7 +78,7 @@ try{
   const lastCommand=async()=> (await events()).at(-1)?.command;
   const fresh=async(mac=true,korean=true)=>{await page.goto('about:blank');await page.setContent(html(mac,korean));await page.waitForFunction(()=>window.__ttcHost?.messages.some(m=>m.command==='ready'));};
   const assertState=async(name,state)=>{
-    const active=typeof state.file==='string';
+    const active=typeof state.file==='string'&&state.surface!=='chat';
     assert.equal(await page.locator('#home').isVisible(),!active,`${name}: home`);
     assert.equal(await page.locator('#guide').isVisible(),active,`${name}: guide`);
     if(active){
@@ -93,8 +103,8 @@ try{
     await page.setViewportSize({width,height:900});await fresh(true,language==='ko');
     await page.evaluate(tokens=>{for(const [key,value]of Object.entries(tokens))document.documentElement.style.setProperty('--vscode-'+key,value);},tokens);
     for(const [name,state]of Object.entries(states)){
-      await update(state);
-      await page.locator('#proposal').evaluate((e,reveal)=>e.open=reveal,['proposal','delete-revealed'].includes(name));
+      await update(state);await page.locator('#workspace-details').evaluate((e,open)=>e.open=open,!!state.workspace);
+      await page.locator('#proposal').evaluate((e,reveal)=>e.open=reveal,['proposal','delete-revealed','quickstart'].includes(name));
       await assertState(name,state);await page.evaluate(()=>window.scrollTo(0,0));
       const metrics=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,buttons:[...document.querySelectorAll('button')].filter(b=>b.checkVisibility()).map(b=>({name:(b.getAttribute('aria-label')||b.textContent||'').trim(),left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right})),code:{width:document.querySelector('#after').clientWidth,scrollWidth:document.querySelector('#after').scrollWidth}}));
       assert.ok(metrics.scrollWidth<=width+1,`${theme}/${width}/${name}: outer horizontal overflow ${metrics.scrollWidth}`);
@@ -119,7 +129,7 @@ try{
   for(const mac of [true,false]){
     await page.setViewportSize({width:460,height:900});await fresh(mac);await update({});
     assert.equal(await page.locator('#generate').isEnabled(),false);
-    await page.getByRole('textbox',{name:'원하는 코드 변경'}).fill('  한글 요청: 음수 제외  ');
+    await page.getByRole('textbox',{name:'메시지'}).fill('  한글 요청: 음수 제외  ');
     await page.keyboard.press((mac?'Meta':'Control')+'+Enter');
     assert.deepEqual((await events()).at(-1),{command:'generate',intent:'한글 요청: 음수 제외'});
     const beforeComposition=(await events()).length;
@@ -129,20 +139,22 @@ try{
     await page.evaluate(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,cancelable:true})));
     assert.equal((await events()).length,beforeComposition,'IME composition Escape cannot cancel');
     await page.keyboard.press('Escape');assert.equal(await lastCommand(),'stop');
-    await update({});
-    await page.getByRole('textbox',{name:'원하는 코드 변경'}).focus();await page.keyboard.press('Tab');
-    assert.equal(await page.evaluate(()=>document.activeElement?.id),'files');
-    const focusStyle=await page.locator('#files').evaluate(button=>({width:getComputedStyle(button).outlineWidth,style:getComputedStyle(button).outlineStyle}));
+    await update({});await page.getByRole('textbox',{name:'메시지'}).fill('계속 질문');
+    await page.getByRole('textbox',{name:'메시지'}).focus();await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'model');
+    const focusStyle=await page.locator('#model').evaluate(button=>({width:getComputedStyle(button).outlineWidth,style:getComputedStyle(button).outlineStyle}));
     assert.notEqual(focusStyle.width,'0px');assert.notEqual(focusStyle.style,'none');
     await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'generate');
-    await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'demo');
-    await page.keyboard.press('Tab');await page.keyboard.press('Space');assert.equal(await page.locator('#other').evaluate(e=>e.open),true);
-    for(const command of ['chooseFiles','demo','import','loadPending','mcpConfig','signIn','tutorial']){
+    await page.locator('#chat-options summary').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#chat-options').evaluate(e=>e.open),true);
+    for(const command of ['chooseFiles','demo','import','loadPending','mcpConfig','signIn','tutorial','openFolder']){
       await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);
     }
-    await update({connected:true});await page.getByRole('button',{name:'모델 선택',exact:true}).click();assert.equal(await lastCommand(),'chooseModel');
-    await page.locator('#account-options summary').click();
-    for(const command of ['usage','signOut']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await update({contextMode:'manual',files:['manual.ts']});await page.locator('#use-current').click();assert.equal(await lastCommand(),'useCurrentFile');
+    await update({connected:true});await page.getByRole('button',{name:'자동',exact:true}).click();assert.equal(await lastCommand(),'chooseModel');
+    for(const command of ['usage']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await page.locator('#move-view').click();assert.equal(await lastCommand(),'moveView');
+    await page.locator('#tutorial').click();await page.evaluate(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'showHelp'}})));await page.locator('[data-command=watchWalkthrough]').click();assert.equal(await lastCommand(),'watchWalkthrough');await page.locator('#close-help').click();
+    await update({...states.predict,surface:'chat'});await page.locator('#learning-tab').click();assert.equal(await lastCommand(),'showLearning');await update(states.predict);await page.locator('#conversation-tab').click();assert.equal(await lastCommand(),'showConversation');
     await update(states.predict);await page.locator('#file').click();assert.equal(await lastCommand(),'focus');
     assert.equal(await page.locator('#proposal').isVisible(),false,'predict before revealing the suggestion');
     await page.locator('#prediction').fill('음수만 제외하면 합계는 30');await page.locator('#predict').click();
@@ -175,6 +187,14 @@ try{
     await update(states.review);await page.locator('#check-tools summary').click();
     for(const command of ['runCheck','chooseCheck','problems','next']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
     await update({...step,checking:true,check:{task:'test',status:'running',sourceHash:'hash',durationMs:0,details:[]}});await page.locator('#cancel-check').click();assert.equal(await lastCommand(),'cancelCheck');
+    await update({connected:true,codexThread:'fixture-thread',proposal:'변경 지점'});
+    await page.locator('#chat-options').evaluate(e=>e.open=true);
+    for(const command of ['chooseLanguage','configureCodex','newChat','openCodexThread','openProposal']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await update({connected:true,messages:[{role:'assistant',text:'관련 코드 설명',status:'complete'}]});await page.locator('[data-command="learnFromAnswer"]').click();assert.equal(await lastCommand(),'learnFromAnswer');
+    await update({workspace});await page.locator('#workspace-details').evaluate(e=>e.open=true);
+    for(const command of ['refreshWorkspace','viewChanges','explainChanges']){await page.locator('[data-command='+command+']').click();assert.equal(await lastCommand(),command);}
+    await page.locator('.worktree-card button').last().click();assert.equal(await lastCommand(),'openWorktree');assert.equal((await events()).at(-1).root,'/tmp/store-feature');
+    await update({...step,contextChanged:true});await page.locator('[data-command=refreshLearning]').click();assert.equal(await lastCommand(),'refreshLearning');
     assert.deepEqual([...new Set((await events()).map(event=>event.command).filter(command=>command!=='ready'))].sort(),[...PANEL_COMMANDS].sort(),'every production command was exercised');
     report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','proposal hidden until requested','edit action','compare without automatic acceptance','prediction before reveal','evidence-gated keep/reject','defer without evidence','out-of-range keep disabled','proposal and before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
   }

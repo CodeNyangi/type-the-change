@@ -2,15 +2,21 @@
 
 Type the Change has no application backend, analytics, advertising, or telemetry of its own.
 
-## ChatGPT connection
+## Existing Codex chats (0.7.0)
 
-Sign-in opens OpenAI's official authorization page in your browser and receives its callback on a temporary loopback server bound to `127.0.0.1`. OAuth credentials, a stable installation host ID, and the registered client/account binding are stored in VS Code SecretStorage, not the project. A one-time welcome flag and your selected model are stored in extension global state. The webview keeps the current request draft in its local VS Code webview state.
+TTC reads existing chats through the installed Codex app-server protocol. It first attempts a connection to an existing shared server; otherwise it starts only a local history-query transport. Its request allowlist contains initialization and thread list/read/turn/item/loaded-list operations. It never starts, resumes, forks, steers or interrupts a thread, runs model requests, selects a model, logs in, reads credential files or stores Codex tokens. Codex remains the owner of conversations, long-term memory, work and provider access. There is no direct OpenAI API request in the extension bundle.
 
-Local VS Code windows coordinate account changes through a lock in the extension's global storage directory. This lock contains only an owner process ID and a random marker, never credentials or source code. It is removed after the operation; a later request can recover a lock whose owner process has exited.
+Displayed chat records and source snapshots are bounded and held in memory, not persisted as another conversation database or semantic memory. Only the selected chat ID and UI/check preferences are kept in VS Code state. The source of history remains Codex. Reasoning payloads and raw tool output are excluded from the display. TTC does not scrape Codex databases or rollout file formats. It does not infer live execution from a saved interrupted/not-loaded record.
 
-When you request a plan, the extension sends your written intent and the current contents of the files you explicitly selected to OpenAI. Unsaved editor contents are included. It also requests the model list available to your connected account. It does not upload the entire workspace. The file picker reads names of open files and existing Git changes, and performs bounded, cancellable filename searches after you type a query. It does not read unselected source contents for this list. Requests set `store: false`; OpenAI's service terms and data handling still apply.
+Optional live notifications use Codex's official hooks after the person reviews the configuration and trusts its exact definitions in Codex. The hook sends only a thread/turn ID, event, timestamp, working directory and tool name over a private local Unix socket to open TTC windows. It excludes prompts, responses, command contents, tool outputs and transcript paths. These notifications are retained only in memory (at most 100 current thread entries), without event history files. No notification triggers an agent action, adds context, approves a tool, blocks a turn or starts new work. The installed hook script and hook definitions persist; removing their `Type the Change: observe Codex` groups from Codex hooks settings disconnects them. Other hooks are preserved.
 
-The extension does not log tokens or read credentials from ChatGPT, Codex, or another extension. Sign Out attempts remote revocation and removes local session credentials. The installation/client registration and account binding remain, as required by the registration flow. If remote revocation fails, the extension reports that it could not confirm revocation.
+Old independent OAuth credentials from versions 0.2–0.5 are no longer accessed or migrated. Existing credentials and older learning journals are not silently deleted during upgrade.
+
+## Worktrees and learning
+
+While visible, TTC reads Git metadata for the selected chat's registered worktrees and polls the selected worktree's changes. It accepts activity-derived paths only when they belong to that inventory; multiple candidates require a choice. Other agents' changes may share that worktree, so the UI does not claim every file belongs to the selected chat. Git commands disable optional locks, external diff drivers and text conversion during comparisons. TTC creates no worktrees, commits, branches or source edits.
+
+Selecting a file reads its last committed content and working copy, with an optional unsaved buffer from this VS Code window. Text is limited to 1 MiB per version. A temporary pair of files is removed after generating the comparison. Editor diff views use immutable in-memory documents. The practice action opens an untitled document; no edit is applied back to the worktree. Source snapshots are versioned and marked stale when later edits or commits are observed. Recorded Codex patches are labeled historical and may differ from the current file.
 
 ## Local files and MCP
 

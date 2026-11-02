@@ -19,3 +19,17 @@ test('the shipped demo deliberately fails despite matching; a human alternative 
     assert.equal(after.total(input),expected,JSON.stringify(input));
   }
 });
+
+
+test('the first practice makes one useful edit and passes mixed, empty, completed and unfinished lists',async()=>{
+ const original=await readFile(new URL('../examples/quickstart/tasks.js',import.meta.url),'utf8');
+ const plan=parsePlan(await readFile(new URL('../examples/quickstart/plan.json',import.meta.url),'utf8'));assert.equal(plan.steps.length,1);
+ const resolved=resolveStep(original,plan.steps[0]);const changed=resolved.prefix+resolved.after+resolved.suffix;
+ const before=await import('data:text/javascript;base64,'+Buffer.from(original).toString('base64'));
+ const after=await import('data:text/javascript;base64,'+Buffer.from(changed).toString('base64'));
+ const tasks=[{title:'Coffee',done:true},{title:'Walk',done:false},{title:'Read',done:false}];
+ assert.equal(before.visibleTasks(tasks).length,3);assert.deepEqual(after.visibleTasks(tasks),tasks.slice(1));
+ for(const input of [[],tasks.slice(0,1),tasks.slice(1)]){
+  const snapshot=JSON.stringify(input);assert.deepEqual(after.visibleTasks(input),input.filter(task=>!task.done));assert.equal(JSON.stringify(input),snapshot);
+ }
+});

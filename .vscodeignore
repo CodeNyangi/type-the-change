@@ -9,6 +9,8 @@
 !plan.schema.json
 !dist/extension.cjs
 !dist/mcp-server.cjs
+!dist/codex-hook.cjs
 !examples/**
 !assets/icon.png
 !assets/toolbar-*.svg
+!package.nls*.json

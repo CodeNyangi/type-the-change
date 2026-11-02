@@ -40,11 +40,11 @@ async function command(title) {
   await item.click();
 }
 
-async function panel() {
+async function panel(surface='chat-toggle') {
   let result;
   await until(async () => {
     for (const frame of page.frames()) {
-      try { if (await frame.locator('#intent').count()) {result = frame; return true;} } catch {}
+      try { if (await frame.locator('#'+surface).isVisible()) {result = frame; return true;} } catch {}
     }
     return false;
   }, 'The real extension webview did not load.');
@@ -105,6 +105,7 @@ try {
     'security.workspace.trust.enabled': false, 'window.restoreWindows': 'none',
     'editor.accessibilitySupport': 'off', 'editor.quickSuggestions': false,
     'chat.disableAIFeatures': true,
+    'typeTheChange.codexPath': path.resolve('test/fixtures/codex-observer.mjs'),
   }));
   const planFile = path.join(root, 'plan.json');
   await writeFile(planFile, JSON.stringify({version: 1, title: '두 값 바꾸기', intent: '두 값을 직접 수정합니다.', steps: [
@@ -131,35 +132,21 @@ try {
   await page.keyboard.press('Enter');await page.locator('.quick-input-widget').waitFor({state:'hidden'});
   await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().click();
   let view = await panel();
-  await view.locator('#home').waitFor({state: 'visible'});
+  await view.locator('#chat-toggle').waitFor({state:'visible'});
   assert.equal(await view.locator('html').getAttribute('lang'),'en');
-  await view.locator('#tutorial').waitFor({state:'visible'});
-  report.checks.push('The editor title icon opens the guide directly and exposes the short walkthrough.');
-  assert.equal(await view.locator('#generate').isDisabled(), true);
-  await view.locator('#intent').fill('음수 가격을 제외해 주세요');
-  assert.equal(await view.locator('#generate').isEnabled(), true);
-  report.checks.push('Actual webview loads; empty requests disabled; Korean draft enables submit.');
-
-  await view.locator('#files').click();
-  await toggleFile(first);
-  await toggleFile(second);
-  await toggleFile('scale/module-4999.ts');await toggleFile('scale/module-4999.ts');
-  await page.locator('.quick-input-widget input[type="text"]').press('Enter');
-  await textIs(view, '#files', 'Files: 2');
-  assert.ok((await view.locator('#files').getAttribute('title')).includes(second));
-  await view.locator('#files').click();
-  await page.locator('.quick-input-widget input[type="text"]').waitFor({state: 'visible'});
-  await page.keyboard.press('Escape');
-  await textIs(view, '#files', 'Files: 2');
-  report.checks.push('One-million-line generated repository: a file beyond the initial 200 candidates is discoverable by name, without sending its contents to a model.');
-  report.checks.push('Real Quick Pick selects files across folders and Korean paths; cancel preserves selection.');
-  await page.screenshot({path: path.join(artifacts, 'home-files.png')});
+  assert.equal(await view.locator('#intent').count(),0);
+  await view.locator('#thread-list button').filter({hasText:'Existing Codex chat'}).click();
+  await view.locator('#activity-list').filter({hasText:'Read the existing work.'}).waitFor({state:'visible'});
+  await view.locator('#codex-open').waitFor({state:'visible'});
+  report.checks.push('Existing Codex chat appears with public activity and no independent request composer.');
+  await page.screenshot({path:path.join(artifacts,'codex-companion.png')});
+  await view.locator('#options summary').first().click();
 
   await app.evaluate(({dialog}, file) => {
     dialog.showOpenDialog = async () => ({canceled: false, filePaths: [file]});
   }, planFile);
-  await view.locator('#other summary').click();
   await view.locator('[data-command="import"]').click();
+  view = await panel('guide');
   await view.locator('#guide').waitFor({state: 'visible'});
   assert.equal(await view.locator('#proposal').isVisible(), false);
   assert.equal(await view.locator('#keep').isVisible(), false);
@@ -204,34 +191,33 @@ try {
   await page.screenshot({path: path.join(artifacts, 'review-diff.png')});
   report.checks.push('Review Changes opens the actual VS Code diff editor.');
 
-  await command('Type the Change: Plan a Change with ChatGPT');
+  await view.locator('#conversation-tab').click();
   view = await panel();
-  await view.locator('#home').waitFor({state: 'visible'});
-  assert.equal(await view.locator('#intent').inputValue(), '음수 가격을 제외해 주세요');
+  await view.locator('#chat-toggle').waitFor({state: 'visible'});
+  assert.equal(await view.locator('#thread-name').innerText(),'Existing Codex chat');
   report.checks.push('New request returns to the composer and preserves its draft.');
 
-  await view.locator('#demo').click();await view.locator('#guide').waitFor({state:'visible'});
+  await view.locator('#demo').click();view=await panel('guide');await view.locator('#guide').waitFor({state:'visible'});
   await page.screenshot({path:path.join(artifacts,'learning-first-look.png')});
-  await predict(view,'[10, -5, 20]의 합계는 30이 되어야 한다.');
-  await focusSource(view);await page.keyboard.type('      break;');await statusIs(view,'matched');
+  await focusSource(view);await page.keyboard.type('  return tasks.filter(task => task.done);');await statusIs(view,'editing');
   await page.keyboard.press('Control+Alt+Enter');
-  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'Check totals'}).waitFor({state:'visible'});
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'Check task list'}).waitFor({state:'visible'});
   assert.ok((await page.locator('.quick-input-list').innerText()).includes('auto-save'));
   await page.keyboard.press('Enter');
   await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
-  await until(async()=>(await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')),'The diff must show the actual alternative.');
-  await decide(view,'reject','break도 반복을 끝내므로 뒤의 20을 놓친다.');await statusIs(view,'rejected');
+  await until(async()=>(await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('task.done')),'The diff must show the actual alternative.');
+  await decide(view,'reject','완료한 항목을 남기므로 요청한 동작과 반대다.');await statusIs(view,'rejected');
   await page.screenshot({path:path.join(artifacts,'reject-alternative.png')});
-  await view.locator('#end').click();await view.locator('#home').waitFor({state:'visible'});
-  assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')));
-  await view.locator('#demo').click();await predict(view,'음수를 만나도 다음 값을 더한다.');
-  await focusSource(view);await page.keyboard.type('      continue;');await statusIs(view,'editing');
+  await view.locator('#end').click();view=await panel();await view.locator('#chat-toggle').waitFor({state:'visible'});
+  assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('task.done')));
+  await view.locator('#demo').click();view=await panel('guide');
+  await focusSource(view);await page.keyboard.type('  return tasks.filter(task => !task.done);');await statusIs(view,'matched');
   await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=passed]').waitFor({state:'visible'});
   assert.equal(await page.locator('.terminal-wrapper').first().isVisible(),false,'checks must not open or focus the terminal');
-  await view.locator('#evidence').fill('continue는 다음 반복으로 이동하여 10과 20을 더한다.');await page.keyboard.press('Control+Enter');
+  await view.locator('#evidence').fill('완료한 항목을 숨기고 빈 목록 검사도 통과했다.');await page.keyboard.press('Control+Enter');
   assert.equal(await view.evaluate(()=>document.activeElement?.id),'keep');await page.keyboard.press('Enter');await statusIs(view,'complete');
   await page.screenshot({path:path.join(artifacts,'learning-demo.png')});
-  await view.locator('#end').click();await view.locator('#home').waitFor({state:'visible'});
+  await view.locator('#end').click();view=await panel();await view.locator('#chat-toggle').waitFor({state:'visible'});
   report.checks.push('Actual alternative is compared, rejected with evidence, and preserved; a fresh correct sample is kept with evidence.');
 
   await mkdir(path.join(workspace, '.type-the-change'), {recursive: true});
@@ -239,13 +225,13 @@ try {
     version: 1, title: 'MCP에서 받은 수정안', intent: '대기 중인 수정안을 열기',
     steps: [{file: 'pending.ts', before: '1', after: '2', reason: '값 수정'}],
   }));
-  if (!(await view.locator('[data-command="loadPending"]').isVisible())) await view.locator('#other summary').click();
-  await view.locator('[data-command="loadPending"]').click();
+  if (!(await view.locator('[data-command="loadPending"]').isVisible())) await view.locator('#options > summary').click();
+  await view.locator('[data-command="loadPending"]').click();view=await panel('guide');
   await textIs(view, '#title', 'MCP에서 받은 수정안');
   await view.locator('#file').waitFor({state: 'visible'});
   assert.equal(await readFile(path.join(workspace, 'pending.ts'), 'utf8'), 'export const pending = 1;\n');
-  await view.locator('#end').click();
-  await view.locator('#home').waitFor({state: 'visible'});
+  await view.locator('#end').click();view=await panel();
+  await view.locator('#chat-toggle').waitFor({state: 'visible'});
   report.checks.push('Open MCP Plan loads actual workspace bridge data without changing source.');
 
   const invalidPlan = path.join(root, 'invalid-plan.json');
@@ -253,11 +239,11 @@ try {
   await app.evaluate(({dialog}, file) => {
     dialog.showOpenDialog = async () => ({canceled: false, filePaths: [file]});
   }, invalidPlan);
-  if (!(await view.locator('[data-command="import"]').isVisible())) await view.locator('#other summary').click();
+  if (!(await view.locator('[data-command="import"]').isVisible())) await view.locator('#options > summary').click();
   await view.locator('[data-command="import"]').click();
   await view.locator('#error').waitFor({state: 'visible'});
-  await textIs(view, '#error', '수정안 형식이 올바르지 않아요. Type the Change용 JSON 파일인지 확인해 주세요.');
-  assert.equal(await view.locator('#home').isVisible(), true);
+  await textIs(view, '#error', 'This suggestion is invalid. Choose a Type the Change JSON file.');
+  assert.equal(await view.locator('#chat-toggle').isVisible(), true);
   await page.screenshot({path: path.join(artifacts, 'invalid-import-recovery.png')});
   report.checks.push('Invalid JSON reports an error while keeping the usable composer available.');
   report.success = true;

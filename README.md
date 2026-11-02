@@ -1,35 +1,44 @@
 # Type the Change
 
-**AI suggests. You check. You decide.**
+**Follow your Codex work. Learn from the code that changes.**
 
-Practice judgment while changing code in VS Code.
+Open a change in VS Code Source Control and TTC follows the code in your editor. Read its related Codex conversation, then try a short change in a separate document.
 
-[![Watch the English walkthrough](assets/quickstart.gif)](assets/type-the-change-quickstart.mp4)
+[Install](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [한국어](README.ko.md)
 
-[Watch the video](assets/type-the-change-quickstart.mp4) · [Install](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [한국어](README.ko.md)
+[![Editing and checking walkthrough](assets/quickstart.gif)](assets/type-the-change-quickstart.mp4)
 
-## Open it
+[Watch the walkthrough](assets/type-the-change-quickstart.mp4) · This earlier recording demonstrates the optional imported-plan editing/checking flow. Version 0.7 starts with your existing Codex chats.
 
-Click the **`>_` icon at the top right of your code editor**, or press **⌘⌥T / Ctrl+Alt+T**. Choose **Try demo**. No account needed.
+## Start
 
-## Use it
+1. Open **Type the Change** in the right sidebar, or press **Cmd/Ctrl+Alt+T**.
+2. Select an existing **Codex chat**. Continue requests and conversation in that original chat.
+3. Open a change in **VS Code Source Control**. TTC’s **Code in view** follows the file and comparison section.
+4. Read the related Codex context. For short changes, **Try this change** opens a separate practice document.
 
-1. **Predict** one result. Press **⌘Enter / Ctrl+Enter**.
-2. **Edit** in your usual editor. Press **⌘⌥Enter / Ctrl+Alt+Enter** to save and check.
-3. **Decide** from the result and diff. Write one reason. Press **⌘Enter / Ctrl+Enter**, choose with **← / →**, then **Enter** to record.
+Codex owns the agent, conversation, memory, plans, execution and worktrees. TTC has no model picker, independent login, request composer or agent loop. It never starts, resumes, steers or stops Codex work. **Continue in Codex** opens the original chat.
 
-The demo suggestion is deliberately wrong. Matching its text or passing a check never approves a change. **⌘⌥T / Ctrl+Alt+T** returns to the code; **How to** reopens the video.
+## Progress and changing worktrees
 
-## Your project
+Saved chat history refreshes while this view is visible. It is paginated and only public messages, plans, command activity and file changes are displayed. Stored history is not treated as proof that an agent is currently running.
 
-Describe a change and select its files, or import a plan from your MCP client. Choose a relevant existing VS Code task once; its result appears beside the code.
+If Codex exposes an existing shared app-server connection, TTC reads its current status. Otherwise, **Connect live notifications** prepares official Codex lifecycle hooks. Review the settings, then review and trust the exact hook definitions with **`/hooks` in Codex** before continuing your original chat. Hook notifications contain event/time/directory metadata only and disappear when TTC closes. This notification relay supports macOS and Linux. Saved-history viewing does not require hooks.
 
-The first task selection offers disabling task-wide auto-save in that workspace, or in user settings if no folder is open. Only reviewed files are then saved. Cancel or choose **Compare only** to leave the setting unchanged. [Details](docs/guide.md)
+Worktree linking uses the chat directory and observed activity, checked against Git's registered worktrees. Ambiguous locations require a choice. File lists and comparisons use native VS Code Source Control. A file from another worktree is identified without silently switching chats. Staged and unstaged diffs follow the exact documents open in the editor. Expand **Past Codex edits** to see history after a commit.
 
-Large repositories use bounded filename search. Each request accepts **8 files, 64 KiB each**. Whole-repository impact analysis and automatic test selection are not included.
+Learning captures a specific version. Later file changes or commits mark it stale without replacing it. Practice never rewinds or overwrites Codex's working file. Matching text is feedback, not proof of understanding or correctness.
 
-**Preview · VS Code 1.100+ · Local files.** Main controls follow your VS Code language (English or Korean). ChatGPT generation sends selected files and your request to OpenAI and uses eligible plan access; real-account consent and generation remain unverified. Offline practice needs no sign-in.
+## Settings
 
-[Setup & MCP](docs/guide.md) · [Verification](docs/keyboard-workflow-0.4.0.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [MIT](LICENSE)
+- **Settings · Help → Position** moves this view between sidebars and the bottom panel. VS Code remembers the layout.
+- **Language** follows VS Code or selects Korean/English.
+- **Codex location** selects an executable if automatic detection fails.
+- `typeTheChange.codexSocket` optionally points to an existing shared Codex Unix socket. TTC does not start or reconfigure the owning server.
+- Imported plans, optional MCP and the earlier editing/checking exercise remain available through the command palette.
 
-Contribute through [issues](https://github.com/CodeNyangi/type-the-change/issues/new/choose). External pull requests are not accepted; the owner reviews changes. [Policy](CONTRIBUTING.md)
+**Preview · VS Code 1.106+ · Trusted local projects · Installed Codex required.** UTF-8 text comparisons support up to 1 MiB per file. Protected paths, symlinks and binary files are excluded. Remote/cloud worktrees are not mapped to unrelated local paths.
+
+[Guide](docs/guide.md) · [Verification](docs/verification-0.7.0.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [MIT](LICENSE)
+
+Contribute through [issues](https://github.com/CodeNyangi/type-the-change/issues/new/choose). External PRs are not accepted; the repository owner performs the final review. [Contributing](CONTRIBUTING.md)

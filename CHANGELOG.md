@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.7.0
+
+- Follow existing Codex chats through paginated read-only APIs; remove TTC agent execution, independent requests, model selection and login from the extension.
+- Distinguish saved history from live runtime status. Support an existing shared Codex server and optional trusted Codex lifecycle notifications, with no conversation-memory store.
+- Link activity to registered worktrees; require a choice for ambiguous locations. Compare committed/working/unsaved bytes and keep recorded Codex edits accessible after commits.
+- Follow the native editor and SCM comparison without duplicating the local file list. Keep staged and unstaged comparison scopes distinct.
+- Show a short attributed Codex excerpt and one next action; collapse full context and metadata. Limit practice to small replacements.
+- Find recorded edits when history is expanded, past command-only activity; keep bounded edit browsing separate from live activity so long-running chats remain useful for learning.
+- Keep learning snapshots stable as work changes. Open immutable diffs and separate untitled practice documents without overwriting the source.
+- Keep the movable right-sidebar default, Korean/English UI, existing walkthrough media and optional imported-plan workflow.
+
+
+## 0.6.1 — local preview
+
+- Default to the Secondary Side Bar and add a visible Move view action. Native drag-and-drop and saved view locations remain available. Requires VS Code 1.106+.
+- Keep chat and learning in one movable view beside the code, with Chat / Learn switching that preserves the learning step.
+- Remove the welcome heading and example prompt buttons.
+- Restore the walkthrough and animated preview in both Marketplace introductions, labelled as an earlier-UI recording.
+- Add a read-only worktree overview with bounded automatic refresh, unsaved edits, real conflicts, overlapping paths, native diffs, and on-demand Codex explanations.
+- Pin conversations to their worktree and invalidate learning decisions when their baseline commit changes. Preserve draft notes across view moves only for the same reviewed code.
+
+## 0.6.0 — 2026-11-02 (preview)
+
+- Use installed Codex app-server as the background agent: project search, managed sign-in, models, conversation state and streamed messages belong to Codex.
+- Keep the learning workflow inside the extension: validated change locations, explanations, manual editing, checks and human decisions.
+- Replace the empty launcher with an actual sidebar composer; remove required file selection and automatic current-file attachment.
+- Accept normal questions, show progress incrementally, preserve partial answers on cancellation, and remove the aggregate 1 MiB event limit.
+- Add Korean/English UI selection and native command localization.
+- Verify one real signed-in Codex learning turn against an ephemeral, read-only fixture.
+
+## 0.5.0 — a simpler first change (local preview)
+
+- Add a left activity-bar entry and in-panel help. Explain browser registration, ChatGPT plan permission, and returning to VS Code before and during connection.
+- Prepare the current source file automatically, show what will be sent, and keep manual multi-file choices until explicitly reset.
+- Separate the model catalog size bound from generated-plan limits; load metadata-rich catalogs and offer a direct retry beside the draft.
+- Start with an offline task-list example, one useful edit, and four real checks. Keep the advanced counterexample as a separate exercise.
+- Use the original request as the first expected outcome, avoiding duplicate input. Human review and keep/reject decisions remain explicit.
+
+
 ## 0.4.0 — keyboard workflow and a clear entry point (preview)
 
 - Open from the editor title icon or Cmd/Ctrl+Alt+T. Add a visible walkthrough link, concise extension-page instructions, and English/Korean main controls.

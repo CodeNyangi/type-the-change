@@ -40,7 +40,7 @@ export class TaskChecks implements vscode.Disposable {
     // VS Code otherwise saves every dirty editor, including unrelated work.
     // The picker explicitly describes this persistent setting before selection.
     if(configureSaving)await saveConfiguration.update('saveBeforeRun','never',workspaceScope?vscode.ConfigurationTarget.Workspace:vscode.ConfigurationTarget.Global);
-    if(vscode.workspace.getConfiguration('task').get<string>('saveBeforeRun')!=='never')throw Error('검토 파일만 저장하는 설정을 적용하지 못했어요. 검사 없이 비교할 수 있어요.');
+    if(vscode.workspace.getConfiguration('task').get<string>('saveBeforeRun')!=='never')throw Error(t("검토 파일만 저장하는 설정을 적용하지 못했어요. 검사 없이 비교할 수 있어요.","Could not configure saving only reviewed files. You can compare without running a check."));
     const id=fingerprint(selected.task);this.choices.set(key,id);await this.storage.update(key,id);return selected.task;
   }
   cancel(){
@@ -49,7 +49,7 @@ export class TaskChecks implements vscode.Disposable {
   }
   dispose(){this.cancel();}
   async run(task:vscode.Task,hash:string,isStale:()=>boolean,report:(result:CheckResult)=>void):Promise<CheckResult>{
-    if(this.running)throw Error('검사가 이미 실행 중이에요.');
+    if(this.running)throw Error(t("검사가 이미 실행 중이에요.","A check is already running."));
     const start=Date.now();let execution:vscode.TaskExecution|undefined,code:number|undefined,ended=false;
     let settle!:()=>void,timer:NodeJS.Timeout|undefined;
     const finished=new Promise<void>(resolve=>settle=resolve),early=new Map<vscode.TaskExecution,{process?:boolean;code?:number;ended?:boolean}>();
@@ -75,7 +75,7 @@ export class TaskChecks implements vscode.Disposable {
       early.clear();await finished;
       return completedCheck(task.name,hash,code,Date.now()-start,isStale(),running.cancelled);
     }catch{
-      return {task:task.name,status:running.cancelled?'cancelled':'error',sourceHash:hash,durationMs:Date.now()-start,details:['검사를 시작하지 못했어요. VS Code의 작업 설정을 확인하세요.']};
+      return {task:task.name,status:running.cancelled?'cancelled':'error',sourceHash:hash,durationMs:Date.now()-start,details:[t("검사를 시작하지 못했어요. VS Code의 작업 설정을 확인하세요.","Could not start the check. Review the VS Code task settings.")]};
     }finally{clearTimeout(timer);for(const subscription of subscriptions)subscription.dispose();if(this.running===running)this.running=undefined;}
   }
 }

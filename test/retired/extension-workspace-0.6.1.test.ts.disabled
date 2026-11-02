@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, mock, test } from 'node:test';
 import { createRequire } from 'node:module';
+import { promisify } from 'node:util';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -15,7 +16,7 @@ const realRequire=createRequire(import.meta.url);
 afterEach(()=>mock.restoreAll());
 interface FilePick {label:string;file:string;picked:boolean}
 
-async function fixture(){
+async function fixture(manual=true){
   const base=await mkdtemp(path.join(tmpdir(),'ttc-selected-workspace-'));
   const primary=path.join(base,'primary'),selected=path.join(base,'selected');
   await mkdir(primary);await mkdir(selected);
@@ -27,7 +28,7 @@ async function fixture(){
   let reads=0,pickers=0,selection:string[]|undefined=['source.ts'],items:FilePick[]=[],pickerTitle='';
   const listed=[file],findCalls:unknown[][]=[];
   const workspace={
-    isTrusted:true,textDocuments:[],workspaceFolders:[{name:'Primary project',uri:uri(primary)},{name:'Selected project',uri:uri(selected)}],
+    isTrusted:true,getConfiguration:()=>({get:(key:string)=>key==='codexPath'?path.resolve('test/fixtures/codex.mjs'):undefined}),textDocuments:[],workspaceFolders:[{name:'Primary project',uri:uri(primary)},{name:'Selected project',uri:uri(selected)}],
     getWorkspaceFolder(target:{fsPath:string}){return this.workspaceFolders.find(folder=>target.fsPath===folder.uri.fsPath||target.fsPath.startsWith(folder.uri.fsPath+path.sep));},
     registerTextDocumentContentProvider:disposable,onDidChangeTextDocument:event,onDidOpenTextDocument:event,onDidCloseTextDocument:event,
     createFileSystemWatcher:()=>({...disposable(),onDidCreate:event,onDidChange:event}),
@@ -58,16 +59,21 @@ async function fixture(){
         };return picker;
       },
       withProgress:async()=>assert.fail('No authentication flow should start'),
-      createWebviewPanel:()=>({...disposable(),reveal(){},onDidDispose:event,webview:{html:'',onDidReceiveMessage:event,async postMessage(state:PanelState){messages.push(state);return true;}}}),
+      createWebviewPanel:()=>({...disposable(),reveal(){},onDidDispose:event,webview:{html:'',onDidReceiveMessage:(handler:Function)=>{queueMicrotask(()=>handler({command:'ready'}));return disposable();},async postMessage(state:PanelState){if(!('type' in state))messages.push(state);return true;}}}),
     },
   };
   const module={exports:{} as {activate(context:unknown):unknown}};
-  loadExtension((name:string)=>name==='vscode'?vscode:realRequire(name),module,module.exports);
+  // Launch the protocol fixture through Node on every platform, including Windows.
+  const child=realRequire('node:child_process'),fixturePath=path.resolve('test/fixtures/codex.mjs');
+  const spawn=(command:string,args:string[],options:unknown)=>child.spawn(command===fixturePath?process.execPath:command,command===fixturePath?[fixturePath,...args]:args,options);
+  const execFile=Object.assign(()=>assert.fail('The adapter uses promisified execFile'),{[promisify.custom]:(command:string,args:string[],options:unknown)=>promisify(child.execFile)(command===fixturePath?process.execPath:command,command===fixturePath?[fixturePath,...args]:args,options)});
+  loadExtension((name:string)=>name==='vscode'?vscode:name==='node:child_process'?{...child,spawn,execFile}:realRequire(name),module,module.exports);
   const account=JSON.stringify({version:1,clientId:'oaiapp_test',subject:'subject',nonce:'nonce',idToken:'test-id',accessToken:'test-access',refreshToken:'test-refresh',expiresAt:Date.now()+3_600_000,scopes:['openid','resource.invoke','chatgpt.tokens.use.direct']});
   module.exports.activate({subscriptions,globalStorageUri:uri(path.join(base,'auth-storage')),asAbsolutePath:(file:string)=>path.resolve(file),globalState:{get(){return undefined;},async update(){}},secrets:{async get(key:string){return key==='typeTheChange.chatgpt.account.v1'?account:undefined;},async store(){},async delete(){}}});
   const run=async(name:string,...args:unknown[])=>{const action=commands.get(`typeTheChange.${name}`);assert.ok(action);await action(...args);};
-  await run('start');await run('chooseFiles');
+  await run('start');if(manual)await run('chooseFiles');
   return {run,messages,workspace,selected,file,original,findCalls,
+    setActive(file:string){vscode.window.activeTextEditor={document:{uri:uri(path.join(selected,file))}};},
     get reads(){return reads;},get pickers(){return pickers;},get items(){return items;},get pickerTitle(){return pickerTitle;},
     select(files:string[]|undefined){selection=files;},
     list(file:string){listed.push(path.resolve(selected,file));},
@@ -154,28 +160,44 @@ test('removing the selected workspace prevents reads, auth and requests until fi
   }finally{await f.close();}
 });
 
-test('removal during model lookup prevents source contents from being sent',async()=>{
-  const f=await fixture(),requests:string[]=[];
-  mock.method(globalThis,'fetch',async(url:string)=>{
-    requests.push(url);assert.equal(url,'https://api.openai.com/v1/models');f.removeSelected();
-    return Response.json({models:[{visibility:'list',slug:'test-model',display_name:'Test model'}]});
-  });
-  try{
-    await f.run('generate','Update the value');assert.equal(requests.length,1,'no Responses request carries stale selected code');
-    assert.deepEqual(f.messages.at(-1)?.files,[]);assert.match(f.messages.at(-1)?.error??'',/작업 폴더가 닫혔어요/);
-    assert.equal(f.messages.at(-1)?.busy,false);
-  }finally{await f.close();}
+test('Codex handles a question without selected files or any direct provider request',async()=>{
+ const f=await fixture(false);mock.method(globalThis,'fetch',async()=>assert.fail('Inference belongs to Codex, not this extension'));
+ try{
+  assert.equal(f.reads,0);assert.equal(f.findCalls.length,0);assert.deepEqual(f.messages.at(-1)?.files,[]);
+  await f.run('generate','Where is the value defined?');
+  const state=f.messages.at(-1)!;assert.equal(state.busy,false);assert.equal(state.error,'');assert.match(state.messages?.at(-1)?.text||'',/source.ts:1/);assert.equal(state.messages?.at(-1)?.status,'complete');assert.equal(state.proposal,undefined);
+  assert.equal(f.pickers,0);assert.equal(f.reads,0);assert.equal(await readFile(f.file,'utf8'),f.original);
+ }finally{await f.close();}
 });
-
-test('a still-open selected workspace is reused and its pending request remains cancellable',async()=>{
-  const f=await fixture();let reachedProvider!:()=>void;const reached=new Promise<void>(resolve=>reachedProvider=resolve);
-  mock.method(globalThis,'fetch',async(url:string,init:RequestInit)=>{
-    assert.equal(url,'https://api.openai.com/v1/models');reachedProvider();
-    return new Promise<Response>((_resolve,reject)=>init.signal!.addEventListener('abort',()=>reject(init.signal!.reason),{once:true}));
-  });
-  try{
-    const pickers=f.pickers,generation=f.run('generate','Update the value');await reached;await f.run('stop');await generation;
-    assert.equal(f.pickers,pickers,'valid explicit selections are reused');assert.deepEqual(f.messages.at(-1)?.files,['source.ts']);
-    assert.equal(f.messages.at(-1)?.busy,false);assert.equal(f.messages.at(-1)?.error,'');assert.equal(await readFile(f.file,'utf8'),f.original);
-  }finally{await f.close();}
+test('Codex learning proposals validate current source and remain optional until opened',async()=>{
+ const f=await fixture(false);
+ try{
+  await f.run('generate','LEARN');const state=f.messages.at(-1)!;
+  assert.equal(state.busy,false);assert.equal(state.error,'');assert.equal(state.proposal,'상수 변경으로 배우기');assert.equal(state.file,undefined);assert.equal(await readFile(f.file,'utf8'),f.original);
+  assert.ok(f.messages.some(state=>state.busy&&state.messages?.at(-1)?.text),'partial text renders before completion');
+ }finally{await f.close();}
+});
+test('a running Codex turn stops immediately and keeps partial output',async()=>{
+ const f=await fixture(false);
+ try{
+  const generation=f.run('generate','HANG');const deadline=Date.now()+5000;
+  while(!f.messages.at(-1)?.messages?.at(-1)?.text&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.ok(f.messages.at(-1)?.messages?.at(-1)?.text);await f.run('stop');await generation;
+  assert.equal(f.messages.at(-1)?.busy,false);assert.equal(f.messages.at(-1)?.messages?.at(-1)?.status,'stopped');assert.equal(f.messages.at(-1)?.error,'');assert.equal(await readFile(f.file,'utf8'),f.original);
+ }finally{await f.close();}
+});
+test('editor switches never attach files until explicitly requested',async()=>{
+ const f=await fixture(false);
+ try{
+  await f.add('other.ts');f.setActive('other.ts');await f.run('start');assert.deepEqual(f.messages.at(-1)?.files,[]);
+  f.select(['source.ts']);await f.run('chooseFiles');await f.run('start');assert.deepEqual(f.messages.at(-1)?.files,['source.ts']);
+  await f.run('useCurrentFile');assert.deepEqual(f.messages.at(-1)?.files,['other.ts']);
+ }finally{await f.close();}
+});
+test('an active protected file is never silently attached or read',async()=>{
+ const f=await fixture(false);
+ try{
+  await f.add('.env','SHOULD_NOT_BE_READ=secret');f.setActive('.env');const reads=f.reads;await f.run('start');
+  assert.equal(f.reads,reads);assert.deepEqual(f.messages.at(-1)?.files,[]);assert.equal(f.pickers,0);
+ }finally{await f.close();}
 });

@@ -85,7 +85,7 @@ async function readBoundedFile(root: string, file: string, limit: number): Promi
   } finally { await handle.close(); }
 }
 
-export async function readWorkspaceFile(root: string, file: string): Promise<string> {
+export async function readWorkspaceFile(root: string, file: string, limit = MAX_SOURCE_BYTES): Promise<string> {
   try {
     try { validateRelativePath(file); } catch { throw new WorkspaceFileError('unsafe_path'); }
     if (file.split('/').some(part => ['.type-the-change', '.codex', '.aws', '.ssh', '.gnupg', 'node_modules'].includes(part.toLowerCase()))) {
@@ -93,7 +93,7 @@ export async function readWorkspaceFile(root: string, file: string): Promise<str
     }
     const resolved = await workspaceRoot(root);
     const target = await checkedPath(resolved, file.split('/'));
-    return await readBoundedFile(resolved, target, MAX_SOURCE_BYTES);
+    return await readBoundedFile(resolved, target, Math.min(Math.max(limit, 1), 1024 * 1024));
   } catch (error) { throw normalizeError(error); }
 }
 

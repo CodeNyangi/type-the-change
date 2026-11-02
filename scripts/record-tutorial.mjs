@@ -15,9 +15,9 @@ let app,page,recorder,recordingFinished,started=0;
 const captions=[];
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const subtitle=text=>captions.push({start:(Date.now()-started)/1000,text});
-async function panel(){
+async function panel(surface='home'){
   const end=Date.now()+30000;
-  while(Date.now()<end){for(const frame of page.frames()){try{if(await frame.locator('#intent').count())return frame;}catch{}}await pause(100);}
+  while(Date.now()<end){for(const frame of page.frames()){try{if(await frame.locator('#'+surface).isVisible())return frame;}catch{}}await pause(100);}
   throw Error('Extension webview missing');
 }
 async function state(view,value){
@@ -53,8 +53,10 @@ try{
   recordingFinished=once(recorder,'exit');started=Date.now();
   subtitle('Open Type the Change from the >_ icon.');await pause(1500);
   await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().click();
-  const view=await panel();await view.locator('#home').waitFor({state:'visible'});
-  subtitle('Try demo. No account needed.');await pause(1600);await view.locator('#demo').click();await view.locator('#prediction').waitFor({state:'visible'});
+  let view=await panel();await view.locator('#home').waitFor({state:'visible'});
+  subtitle('Open the included learning exercise. No account needed.');await pause(1600);
+  await app.evaluate(({dialog},file)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[file]});},path.join(folder,'plan.json'));
+  await view.locator('#chat-options summary').click();await view.locator('[data-command="import"]').click();view=await panel('guide');await view.locator('#prediction').waitFor({state:'visible'});
   await view.waitForFunction(()=>document.activeElement?.id==='prediction');
   subtitle('1. Predict. Ctrl+Enter returns to your code.');
   await typeField(view.locator('#prediction'),'Skip negatives: 10 + 20 = 30.');await page.keyboard.press('Control+Enter');
@@ -91,6 +93,6 @@ try{
   await run('ffmpeg',['-y','-loglevel','error','-i',path.join(output,'type-the-change-quickstart.mp4'),'-vf','setpts=0.7*PTS,fps=6,scale=900:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse','-loop','0',path.join(output,'quickstart.gif')]);
   for(const [name,time] of [['caption-start',2],['caption-test',captions.find(c=>c.text.startsWith('Expected 30')).start+1],['caption-decision',duration-1]])await run('ffmpeg',['-y','-loglevel','error','-ss',String(time),'-i',path.join(output,'type-the-change-quickstart.mp4'),'-frames:v','1',path.join(output,name+'.png')]);
   await rm(path.join(output,'capture.mp4'));
-  await writeFile(path.join(output,'recording.json'),JSON.stringify({success:true,durationSeconds:duration,environment:'Real VS Code 1.142.0, isolated Linux CI display',fixture:'Built-in Try demo: examples/price.ts, plan.json, check.mjs',sourceCommit:process.env.GITHUB_SHA,limitations:['Deliberately wrong local exercise, not a live AI response.','Four demo inputs, not proof of general correctness or learning gain.','Opened through the editor toolbar and Try demo; editing, checks and decisions use real VS Code keyboard controls.','Silent video with burned-in English captions.']},null,2));
+  await writeFile(path.join(output,'recording.json'),JSON.stringify({success:true,durationSeconds:duration,environment:'Real VS Code 1.142.0, isolated Linux CI display',fixture:'Imported examples/judgment/plan.json with total.js and check.mjs',sourceCommit:process.env.GITHUB_SHA,limitations:['Deliberately wrong local exercise, not a live AI response.','Four demo inputs, not proof of general correctness or learning gain.','Opened through the editor toolbar and Import a suggestion; editing, checks and decisions use real VS Code keyboard controls.','Silent video with burned-in English captions.']},null,2));
 }catch(error){if(page)await page.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}
 finally{if(recorder){recorder.stdin.write('q');await recordingFinished.catch(()=>{});}await app?.close().catch(()=>{});await rm(root,{recursive:true,force:true});}
