@@ -7,13 +7,13 @@ Choose a task and immediately see why a change matters, alongside a short excerp
 ## Start
 
 1. Open **Type the Change** in the right sidebar and choose a task. The picker starts with five recent tasks from this project.
-2. If there is no explanation, choose **Ask Codex to explain a change**. TTC copies a request and opens the original chat. Paste and send it there; the existing Codex explains one change.
+2. If there is no explanation, choose **Ask Codex to explain a change**. TTC sends this one request to the existing Codex chat through the official `codex queue` command. Delivery and failures are shown in the panel.
 3. Return to TTC to read the reason and key code immediately. Expand the previous code if needed.
 4. **Check the original edit** opens a read-only comparison.
 
-Cards stay in the original Codex conversation. TTC matches their quoted code against actual edits recorded in that same chat before displaying them. Ordinary requests, restart instructions and arbitrary patches do not become lessons.
+Cards stay in the original Codex conversation. TTC matches their quoted code against actual edits recorded in that same chat before displaying them. Existing prose is shown as context only when it names the exact file, immediately precedes its recorded edit in the same turn, and belongs to a registered project worktree. Proximity alone is insufficient.
 
-**Codex owns the agent, conversation, memory and work.** TTC sends no model request and starts no agent. The person sends the learning request in the original chat. The displayed explanation exists only in memory.
+**Codex owns the agent, conversation, memory and work.** TTC makes no direct model call and starts no independent agent. Only an explicit click sends an explanation request to the original Codex owner; its current model and permissions remain in Codex. The displayed explanation exists only in memory.
 
 [Install](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [한국어](README.ko.md)
 

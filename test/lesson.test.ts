@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readLesson,verifyLesson,lessonPrompt} from '../src/lesson.js';
+import {readLesson,verifyLesson,lessonPrompt,existingExplanation} from '../src/lesson.js';
 const card={version:2 as const,title:'오류 종류와 표시 문구를 나누는 이유',explanation:'기존 조건은 오류의 종류가 아니라 한글 문자열을 찾습니다. 오류 코드를 따로 보관하면 표시 언어와 분리할 수 있습니다.',source:{file:'handlers/example.py',worktree:'/repo',before:'if "찾을 수 없" in detail:\n    status = 404\n',after:'status = exception_status(error)\n'}};
 const message=(value:any)=>'```ttc-lesson\n'+JSON.stringify(value)+'\n```';
 const edit:any={id:'edit',kind:'change',text:'',diffs:[{path:'/repo/handlers/example.py',diff:'@@ -1,2 +1,1 @@\n-if "찾을 수 없" in detail:\n-    status = 404\n+status = exception_status(error)\n'}]};
@@ -24,6 +24,19 @@ test('new code excerpts are allowed only when they were absent before the record
 });
 test('handoff asks the existing Codex to write one card without changing source or starting new work',()=>{
  assert.match(lessonPrompt(true),/새 작업·수정·검사 실행은 하지/);assert.match(lessonPrompt(false),/Do not run new work/);assert.match(lessonPrompt(true),/```ttc-lesson/);
+});
+test('existing prose requires the exact file, same turn, adjacent edit and a registered worktree',()=>{
+ const context:any={id:'prose',turnId:'turn',kind:'assistant',text:'handlers/example.py에서 표시 문구 대신 오류 상태를 사용하겠습니다. 표시 언어가 달라도 같은 상태가 유지되도록 바꾸겠습니다.'};
+ const change={...edit,turnId:'turn'};
+ const lesson=existingExplanation([context,change],['/repo']);assert.equal(lesson?.origin,'context');assert.equal(lesson?.card.explanation,context.text);assert.equal(lesson?.editId,edit.id);
+ assert.equal(existingExplanation([{...context,text:'표시 언어가 달라도 같은 상태가 유지되도록 바꾸겠습니다. 가까운 설명만으로 파일과의 관계를 단정하지 않습니다.'},change],['/repo']),undefined);
+ assert.equal(existingExplanation([{...context,turnId:'other'},change],['/repo']),undefined);
+ assert.equal(existingExplanation([context,{...change,id:'earlier'},change],['/repo'])?.editId,'earlier','another edit is a context boundary');
+ assert.equal(existingExplanation([context,change],['/other']),undefined);
+ assert.equal(existingExplanation([{...context,text:'handlers/example.py를 확인하려면 VS Code를 다시 로드하고 설치를 완료한 뒤 알려 주세요.'},change],['/repo']),undefined);
+});
+test('a request identifier is preserved for matching an acknowledgement to its own response',()=>{
+ const requestId='01a199f2-6e4d-7f62-8330-bc04bce75fde';assert.match(lessonPrompt(true,requestId),new RegExp(requestId));assert.equal(readLesson(message({...card,requestId}))?.requestId,requestId);
 });
 
 test('removed worktrees allow only an exact historical snapshot without reading source files',()=>{

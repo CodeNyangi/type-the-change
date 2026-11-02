@@ -11,7 +11,7 @@ test('the learning screen never presents conversation or arbitrary patches as a 
  const f=fixture();try{f.send({...state,items:[{kind:'assistant',text:'Restart VS Code operational instructions'}],review:{file:'test-host/real-companion.ts'},reviewContext:{request:'Long complaint',response:'Restart VS Code'}});
   assert.equal(f.doc.querySelector('#lesson')?.hasAttribute('hidden'),true);assert.equal(f.doc.body.textContent!.includes('Restart VS Code'),false);
   for(const selector of ['#activity-tab','#changes-tab','#activity-list','#recorded-list','#review-prompt','#file-list'])assert.equal(f.doc.querySelector(selector),null);
-  f.click('#prepare');assert.deepEqual(f.messages.at(-1),{command:'prepareLesson'});assert.match(f.doc.querySelector('#handoff-note')!.textContent!,/붙여넣어/);
+  f.click('#prepare');assert.deepEqual(f.messages.at(-1),{command:'prepareLesson'});assert.match(f.doc.querySelector('#handoff-note')!.textContent!,/전달 중/);assert.equal((f.doc.querySelector('#prepare') as HTMLButtonElement).disabled,true);f.click('#prepare');assert.equal(f.messages.filter(m=>m.command==='prepareLesson').length,1);
  }finally{f.close();}
 });
 test('change explanation is immediate, even for older quiz-shaped cards',()=>{
@@ -25,6 +25,14 @@ test('change explanation is immediate, even for older quiz-shaped cards',()=>{
 });
 test('code presentation removes common indentation while preserving the guarded body',()=>{
  const f=fixture();try{f.send({...state,lesson:{...lesson,card:{...card,source:{...card.source,after:'        if invalid:\n            reject()\n'}}}});assert.equal(f.doc.querySelector('#after')!.textContent,'if invalid:\n    reject()');}finally{f.close();}
+});
+test('sending is acknowledged by the host, failures remain visible, and pending requests cannot be repeated',()=>{
+ const f=fixture();try{
+  f.send(state);f.click('#prepare');assert.equal((f.doc.querySelector('#prepare') as HTMLButtonElement).disabled,true);
+  f.send({...state,lessonRequest:'queued'});assert.match(f.doc.querySelector('#handoff-note')!.textContent!,/전달했습니다/);f.click('#prepare');assert.equal(f.messages.filter(m=>m.command==='prepareLesson').length,1);
+  f.send({...state,lessonRequest:'failed'});assert.equal((f.doc.querySelector('#prepare') as HTMLButtonElement).disabled,false);assert.equal(f.doc.querySelector('#handoff-note')!.getAttribute('role'),'alert');f.click('#prepare');assert.equal(f.messages.filter(m=>m.command==='prepareLesson').length,2);
+  f.send({...state,lessonRequest:'uncertain'});assert.equal((f.doc.querySelector('#prepare') as HTMLButtonElement).disabled,true);assert.match(f.doc.querySelector('#handoff-note')!.textContent!,/중복 요청/);
+ }finally{f.close();}
 });
 test('card text stays inert and source opens only on an explicit action',()=>{
  const f=fixture();try{f.send({...state,lesson:{...lesson,card:{...card,title:'<script>evil()</script>',explanation:'<img src=x onerror=evil()>'}}});assert.equal(f.doc.querySelector('img'),null);assert.equal(f.doc.querySelectorAll('script').length,1);f.click('#open-diff');assert.deepEqual(f.messages.at(-1),{command:'openLessonDiff'});}finally{f.close();}

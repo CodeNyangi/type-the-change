@@ -6,7 +6,8 @@
 - Never turn ordinary requests, operational replies, logs or arbitrary patches into lessons.
 - Support older cards without retaining their quiz fields, and wrap dedented code within narrow sidebars.
 - Match card code to an actual recorded edit in the same chat before displaying it, including immutable historical worktree snapshots.
-- Copy a bounded learning-card request and open the original Codex chat; TTC does not send it, start an agent or create a memory store.
+- Deliver an explicitly requested explanation to the original Codex chat using the official message queue. Show acknowledgement, failures and uncertain delivery, block duplicate sends, and correlate responses with the request. No independent agent or memory store is created.
+- Allow existing public context only with an exact file reference immediately before its same-turn edit in a registered worktree; never infer a reason from a nearby unrelated reply.
 - Keep project task selection to five recent tasks. Remove transcript, branch, timestamp and edit inventories from the learner screen and its payload.
 - Align native CI and the optional walkthrough recorder with the current entry points; keep imported-plan errors separate from Codex connection errors.
 - Normalize Windows review paths, reject generated/test artifacts with either path separator, and create native-check report directories on clean CI runners.

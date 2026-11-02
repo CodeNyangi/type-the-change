@@ -7,7 +7,7 @@ export function learningDisplay(s:CompanionState,projectPaths:string[]=[]){
  const sameProject=!projectPaths.length||s.roots.some(root=>projectPaths.some(project=>canonical(root.path)===canonical(project)));
  return {threads:s.threads.map(({id,title,cwd})=>({id,title,cwd})),nextThreads:s.nextThreads,selected:s.selected?{id:s.selected.id,title:s.selected.title}:undefined,
   projectPaths:[...projectPaths,...(sameProject?s.roots.filter(root=>!root.unavailable).map(root=>root.path):[])],loading:s.loading,error:s.error,
-  lesson:s.lesson,lessonStatus:s.lessonStatus};
+  lesson:s.lesson,lessonStatus:s.lessonStatus,lessonRequest:s.lessonRequest};
 }
 
 export function companionHtml(nonce:string,korean:boolean){
@@ -16,8 +16,12 @@ export function companionHtml(nonce:string,korean:boolean){
   empty:t('이 프로젝트에서 찾은 작업이 없습니다.','No tasks found in this project.'),
   missing:t('이 작업의 변경 이해하기','Understand this task’s changes'),
   prepare:t('Codex에 변경 설명 요청','Ask Codex to explain a change'),
-  prepareNote:t('요청문을 복사하고 원래 Codex 채팅을 엽니다.','Copies a request and opens the original Codex chat.'),
-  prepared:t('Codex 채팅에 붙여넣어 보내세요. 설명이 준비되면 여기 나타납니다.','Paste and send in Codex. The explanation will appear here when ready.'),
+  prepareNote:t('원래 Codex 채팅에서 설명을 받아옵니다.','Requests an explanation in the original Codex chat.'),
+  sending:t('Codex에 전달 중…','Sending to Codex…'),
+  queued:t('Codex에 전달했습니다. 설명이 오면 여기에 표시됩니다.','Sent to Codex. Its explanation will appear here.'),
+  unsupported:t('설치된 Codex가 메시지 전달을 지원하지 않습니다. Codex를 업데이트해 주세요.','This Codex version cannot receive messages. Update Codex and try again.'),
+  failed:t('Codex에 전달하지 못했습니다. Codex 앱의 연결 상태를 확인하고 다시 눌러 주세요.','Could not send to Codex. Check its connection and try again.'),
+  uncertain:t('전달 결과를 확인하지 못했습니다. 중복 요청을 피하도록 원래 Codex 채팅에서 확인해 주세요.','Delivery could not be confirmed. Check the original Codex chat before sending again.'),
   checking:t('설명의 코드가 실제 수정인지 확인 중…','Checking the explanation against the recorded edit…'),
   unverified:t('설명의 코드를 수정 기록에서 확인하지 못했습니다.','The explanation could not be matched to a recorded edit.'),
   error:t('Codex 기록을 연결하지 못했습니다. 설정에서 연결을 확인하세요.','Could not connect to Codex history. Check the connection in settings.')};
@@ -36,12 +40,12 @@ export function companionHtml(nonce:string,korean:boolean){
 <section id="settings" hidden><div class="row"><button class="quiet" data-command="chooseLanguage">${t('언어','Language')}</button><button class="quiet" data-command="moveView">${t('위치','Position')}</button><button class="quiet" data-command="configureCodex">${t('Codex 위치','Codex location')}</button><button class="quiet" data-command="setupLive">${t('실시간 알림 연결','Connect live notifications')}</button></div></section>
 <script nonce="${nonce}">
 const api=acquireVsCodeApi(),$=id=>document.getElementById(id),labels=${JSON.stringify(labels)};
-let state={},thread='',cardId='',prepared=false,allProjects=false,limit=5,threadKey='';
+let state={},thread='',cardId='',sending=false,allProjects=false,limit=5,threadKey='';
 const send=(command,extra={})=>api.postMessage({command,...extra});
 $('chat-toggle').onclick=()=>{const open=$('picker').hidden;$('picker').hidden=!open;$('chat-toggle').setAttribute('aria-expanded',String(open));if(open)$('chat-filter').focus();};
 $('refresh').onclick=()=>send('refreshChats');$('older').onclick=()=>send('moreChats');
 $('chat-filter').oninput=()=>{limit=5;renderThreads();};$('show-more').onclick=()=>{limit+=5;renderThreads();};$('scope-toggle').onclick=()=>{allProjects=!allProjects;limit=5;renderThreads();};
-const prepare=()=>{prepared=true;render();send('prepareLesson');};$('prepare').onclick=prepare;$('next-card').onclick=prepare;$('retry').onclick=()=>send('refreshLesson');
+const prepare=()=>{if(sending||['sending','queued','uncertain'].includes(state.lessonRequest))return;sending=true;render();send('prepareLesson');};$('prepare').onclick=prepare;$('next-card').onclick=prepare;$('retry').onclick=()=>send('refreshLesson');
 $('open-diff').onclick=()=>send('openLessonDiff');$('codex').onclick=()=>send('openCodexThread');
 $('settings-toggle').onclick=()=>$('settings').hidden=!$('settings').hidden;
 document.querySelectorAll('[data-command]').forEach(button=>button.onclick=()=>send(button.dataset.command));
@@ -56,17 +60,16 @@ function displayCode(code){const lines=code.replace(/\r\n/g,'\n').trimEnd().spli
 function renderCard(){
  const lesson=state.lesson,card=lesson?.card;if(!card)return;
  if(cardId!==lesson.id){cardId=lesson.id;$('before-details').open=false;$('lesson-source').open=false;}
- $('lesson-title').textContent=card.title;$('explanation').textContent=card.explanation;$('after').textContent=displayCode(card.source.after);$('before').textContent=displayCode(card.source.before);$('before-details').hidden=!card.source.before;$('source-file').textContent=lesson.file;
+ $('lesson-title').textContent=lesson.origin==='context'?${JSON.stringify(t('Codex가 이 수정 전에 설명한 내용','What Codex said before this edit'))}:card.title;$('explanation').textContent=card.explanation;$('code-label').textContent=lesson.origin==='context'?${JSON.stringify(t('이어서 바뀐 코드','Code changed immediately afterward'))}:${JSON.stringify(t('핵심 코드','Key code'))};$('after').textContent=displayCode(card.source.after);$('before').textContent=displayCode(card.source.before);$('before-details').hidden=!card.source.before;$('source-file').textContent=lesson.file;
 }
 function render(){
- if(thread!==state.selected?.id){thread=state.selected?.id||'';prepared=false;cardId='';$('picker').hidden=!!thread;$('settings').hidden=true;$('chat-filter').value='';}
- if(state.lesson?.id&&state.lesson.id!==cardId)prepared=false;
+ if(thread!==state.selected?.id){thread=state.selected?.id||'';sending=false;cardId='';$('picker').hidden=!!thread;$('settings').hidden=true;$('chat-filter').value='';}
  $('chat-toggle').textContent=state.selected?.title||labels.choose;$('selected').hidden=!state.selected;$('codex').hidden=!state.selected;$('error').hidden=!state.error&&!state.actionError;$('error').textContent=state.actionError|| (state.error?labels.error:'');
  const hasCard=!!state.lesson;$('welcome').hidden=hasCard;$('lesson').hidden=!hasCard;
- $('prepare').disabled=!!state.loading||state.lessonStatus==='checking';$('welcome-text').textContent=state.lessonStatus==='checking'?labels.checking:state.lessonStatus==='unverified'?labels.unverified:${JSON.stringify(t('무엇이 달라졌고 왜 필요한지, 실제 코드와 함께 봅니다.','See what changed and why, alongside the actual code.'))};$('handoff-note').hidden=hasCard&&!prepared;$('handoff-note').textContent=prepared?labels.prepared:labels.prepareNote;$('retry').hidden=state.lessonStatus!=='unverified'&&!prepared;
+ const pending=sending||['sending','queued','uncertain'].includes(state.lessonRequest);$('prepare').disabled=!!state.loading||state.lessonStatus==='checking'||pending;$('next-card').disabled=pending;$('prepare').textContent=sending||state.lessonRequest==='sending'?labels.sending:labels.prepare;$('welcome-text').textContent=state.lessonStatus==='checking'?labels.checking:state.lessonStatus==='unverified'?labels.unverified:${JSON.stringify(t('무엇이 달라졌고 왜 필요한지, 실제 코드와 함께 봅니다.','See what changed and why, alongside the actual code.'))};$('handoff-note').hidden=hasCard&&!state.lessonRequest&&!sending;$('handoff-note').textContent=labels[state.lessonRequest]||(sending?labels.sending:labels.prepareNote);$('handoff-note').setAttribute('role',['failed','unsupported','uncertain'].includes(state.lessonRequest)?'alert':'status');$('retry').hidden=state.lessonStatus!=='unverified'&&state.lessonRequest!=='queued';
  renderThreads();renderCard();
 }
-window.addEventListener('message',event=>{const message=event.data;if(message.type==='showHelp'){$('settings').hidden=false;return;}if(message.type)return;state=message.companion||{};render();if(Number.isSafeInteger(message.revision))send('rendered',{revision:message.revision});});
+window.addEventListener('message',event=>{const message=event.data;if(message.type==='showHelp'){$('settings').hidden=false;return;}if(message.type)return;state=message.companion||{};sending=false;render();if(Number.isSafeInteger(message.revision))send('rendered',{revision:message.revision});});
 send('ready');
 </script></body></html>`;
 }

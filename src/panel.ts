@@ -72,7 +72,7 @@ export class GuidePanel implements vscode.Disposable {
   private postState(){
     if(this.webview&&this.htmlModes.get(this.webview)!==(!!this.state.companion&&(!this.state.file||this.conversation)))this.writeHtml(this.webview);
     const revision=++this.revision;
-    void this.webview?.postMessage({...this.state,surface:this.conversation?'chat':'learn',handoff:this.handoff,revision});
+    void this.webview?.postMessage({...this.state,surface:this.conversation?'chat':'learn',handoff:this.handoff||!!this.state.handoff,revision});
   }
   update(state:PanelState){
     this.state=state;

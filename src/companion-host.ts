@@ -11,6 +11,7 @@ import {locateHunk,canPractice} from './change-review.js';
 import {text as t} from './locale.js';
 import {isLearningCode} from './learning-context.js';
 import {lessonPrompt} from './lesson.js';
+import {queueExplanation,RequestError} from './codex-request.js';
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
 export function createCompanion(context:vscode.ExtensionContext,render:()=>void){
  let followTimer:NodeJS.Timeout|undefined,followSelection=false,followRevision=0;
@@ -81,9 +82,13 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
   await vscode.commands.executeCommand('vscode.diff',virtual('your-code.txt',doc.getText()),virtual('codex-code.txt',h.after),t('내 코드 ↔ Codex 변경','My code ↔ Codex change'),{preview:false,viewColumn:vscode.ViewColumn.One});
  }
  async function prepareLesson(){
-  trusted();const id=model.state.selected?.id;if(!id)return;
-  await vscode.env.clipboard.writeText(lessonPrompt(t('ko','en')==='ko'));
-  await vscode.env.openExternal(vscode.Uri.parse('codex://threads/'+encodeURIComponent(id)));
+  trusted();const id=model.state.selected?.id;if(!id||!model.canRequest(id))return;
+  const requestId=randomUUID();model.requestState(id,'sending',requestId);
+  try{
+   const command=await findCodex(vscode.workspace.getConfiguration('typeTheChange').get<string>('codexPath'));
+   await queueExplanation(command,id,lessonPrompt(t('ko','en')==='ko',requestId));
+   model.requestState(id,'queued');model.refreshLesson();
+  }catch(error){model.requestState(id,error instanceof RequestError?error.code:'failed');}
  }
  async function openLessonDiff(){
   const lesson=model.state.lesson;if(!lesson)return;
@@ -121,7 +126,7 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
   selectChat:(v)=>typeof v?.id==='string'?select(v.id):undefined,refreshChats:()=>model.refreshChats(),moreChats:()=>model.listMore(),olderActivity:()=>model.older(),olderEdits:()=>model.olderEdits(),
   learnLatest:async()=>pinReview(async()=>{if(await model.learnLatest())await openDiff();}),
   prepareLesson,refreshLesson:()=>model.refreshLesson(),openLessonDiff,
-  openCodexThread:async()=>{const id=model.state.selected?.id;if(id)await vscode.env.openExternal(vscode.Uri.parse('codex://threads/'+encodeURIComponent(id)));},
+  openCodexThread:async()=>{const id=model.state.selected?.id;if(id&&!await vscode.env.openExternal(vscode.Uri.parse('codex://threads/'+encodeURIComponent(id))))throw Error(t('Codex 채팅을 열지 못했습니다. Codex 앱을 실행한 뒤 다시 시도하세요.','Could not open the Codex chat. Start the Codex app and try again.'));},
   pickWorktree:async()=>{const picked=await vscode.window.showQuickPick(model.state.roots.filter(r=>!r.unavailable).map(r=>({label:r.branch||r.head.slice(0,8),description:r.path,root:r.path})),{title:t('이 채팅과 함께 볼 작업공간','Worktree to inspect with this chat')});if(picked)model.chooseRoot(picked.root);},
   openChange:v=>typeof v?.file==='string'?pinReview(()=>model.reviewFile(v.file)):undefined,
   reviewRecorded:v=>typeof v?.id==='string'&&typeof v?.file==='string'?pinReview(()=>model.reviewRecorded(v.id,v.file)):undefined,

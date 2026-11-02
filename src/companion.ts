@@ -5,7 +5,7 @@ import {CodexEvents,type CodexEvent} from './codex-events.js';
 import {git,parseWorktrees,readWorktree,type Worktree,type GitRunner} from './worktrees.js';
 import {loadChange,parseHunks,hunkAtLine,type ChangeReview,type EditorComparison} from './change-review.js';
 import {editContext,isLearningCode} from './learning-context.js';
-import {readLesson,verifyLesson,type VerifiedLesson} from './lesson.js';
+import {readLesson,verifyLesson,existingExplanation,type VerifiedLesson} from './lesson.js';
 export interface CompanionState {
  threads:CodexThread[];selected?:CodexThread;items:ActivityItem[];mode:'connecting'|'history'|'shared';
  loading:boolean;error?:string;updatedAt?:number;live?:CodexEvent;nextThreads?:string;nextItems?:string;gap?:boolean;
@@ -14,6 +14,7 @@ export interface CompanionState {
  reviewContext?:{turnId:string;request?:string;response?:string;nearby?:string;loading:boolean};
  learningSearch?:'searching'|'empty';
  lesson?:VerifiedLesson;lessonStatus?:'checking'|'missing'|'unverified';
+ lessonRequest?:'sending'|'queued'|'unsupported'|'failed'|'uncertain';
  editHistory?:ActivityItem[];editsLoaded?:boolean;editsLoading?:boolean;nextEdits?:string;editsError?:boolean;
  editor?:{file:string;outside:boolean;error?:boolean};reviewOpened?:boolean;
 }
@@ -43,6 +44,8 @@ export class Companion {
  private client?:CodexObserver;private epoch=0;private timer?:NodeJS.Timeout;private visible=false;private running=false;private again=false;private disposed=false;
  private selected?:string;private manual?:string;private listAt=0;private rootAt=0;private itemIds=new Set<string>();private reviewEpoch=0;
  private legacyHistory=false;private lessonKey='';private editsEpoch=0;private followKey='';private followEpoch=0;private comparisonKey?:string;
+ private requests=new Map<string,{status:NonNullable<CompanionState['lessonRequest']>;requestId?:string}>();
+ private explanationHistory:ActivityItem[]=[];private explanationCursor?:string;private explanationExhausted=false;
  constructor(private factory:()=>Promise<CodexObserver>,private changed:(state:CompanionState)=>void,private run:GitRunner=git,private dirty:(root:string,file:string)=>string|undefined=()=>undefined,private dirtyPaths:()=>string[]=()=>[]){
   this.events=new CodexEvents(event=>{if(event.threadId===this.selected){this.state.live=event;this.state.hooks='ready';this.emit();this.refresh();}});
   void this.events.start().catch(()=>{});
@@ -52,7 +55,8 @@ export class Companion {
  select(id:string,manual?:string){
   if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))return;
   this.epoch++;this.reviewEpoch++;this.followKey='';this.selected=id;this.manual=manual;this.rootAt=0;this.itemIds.clear();this.legacyHistory=false;this.lessonKey='';
-  this.state={...this.state,selected:this.state.threads.find(t=>t.id===id),items:[],nextItems:undefined,roots:[],root:undefined,tree:undefined,review:undefined,reviewContext:undefined,learningSearch:undefined,lesson:undefined,lessonStatus:undefined,hunk:0,practice:undefined,editor:undefined,reviewOpened:false,live:this.events.latest.get(id),error:undefined,loading:true,gap:false,updatedAt:undefined,editHistory:[],editsLoaded:false,editsLoading:false,nextEdits:undefined,editsError:false};this.emit();this.refresh();
+  this.explanationHistory=[];this.explanationCursor=undefined;this.explanationExhausted=false;
+  this.state={...this.state,selected:this.state.threads.find(t=>t.id===id),items:[],nextItems:undefined,roots:[],root:undefined,tree:undefined,review:undefined,reviewContext:undefined,learningSearch:undefined,lesson:undefined,lessonStatus:undefined,lessonRequest:this.requests.get(id)?.status,hunk:0,practice:undefined,editor:undefined,reviewOpened:false,live:this.events.latest.get(id),error:undefined,loading:true,gap:false,updatedAt:undefined,editHistory:[],editsLoaded:false,editsLoading:false,nextEdits:undefined,editsError:false};this.emit();this.refresh();
  }
  chooseRoot(root:string){if(!this.state.roots.some(r=>r.path===root&&!r.unavailable))return;this.epoch++;this.manual=root;this.state.root=root;this.state.rootSource='choice';this.state.ambiguous=false;this.state.review=undefined;this.state.reviewContext=undefined;this.state.learningSearch=undefined;this.state.editor=undefined;this.followKey='';this.reviewEpoch++;this.state.tree=undefined;this.resetEdits();this.rootAt=0;this.emit();this.refresh();}
  private resetEdits(){this.editsEpoch++;this.state.editHistory=[];this.state.editsLoaded=false;this.state.editsLoading=false;this.state.nextEdits=undefined;this.state.editsError=false;}
@@ -158,17 +162,36 @@ export class Companion {
  }
  private async syncLesson(){
   const selection=this.epoch;
-  const candidates=[...this.state.items].reverse().filter(item=>item.kind==='assistant');
+  const roots=this.state.roots.filter(root=>!root.unavailable).map(root=>root.path);
+  const combined=()=>{const current=new Set(this.state.items.map(item=>item.id));return [...this.explanationHistory.filter(item=>!current.has(item.id)),...this.state.items];};
+  let known=combined();
+  let context=existingExplanation(known,roots);
+  // Search older public context once, in bounded pages, instead of requiring
+  // every long chat to have a newly authored structured card.
+  if(this.visible&&!context&&!known.some(item=>item.kind==='assistant'&&readLesson(item.text))&&!this.explanationExhausted){
+   this.state.lessonStatus='checking';this.emit();
+   let cursor=this.explanationCursor||this.state.nextItems;
+   for(let page=0;page<8&&cursor;page++){
+    let response;try{response=await this.pageItems(this.selected!,cursor);}catch{if(selection===this.epoch)this.state.error='connection';return;}if(selection!==this.epoch||this.disposed)return;
+    const older=((response.data??[]).map(activityItem).filter(Boolean) as ActivityItem[]).filter(item=>item.kind!=='command').reverse();
+    const ids=new Set(this.explanationHistory.map(item=>item.id));this.explanationHistory=[...older.filter(item=>!ids.has(item.id)),...this.explanationHistory].slice(-600);
+    const next=response.nextCursor||undefined;this.explanationCursor=next;this.explanationExhausted=!next||next===cursor;cursor=next;
+    known=combined();context=existingExplanation(known,roots);
+    if(context||known.some(item=>item.kind==='assistant'&&readLesson(item.text))||this.explanationExhausted)break;
+   }
+   if(!cursor)this.explanationExhausted=true;
+  }
+  const candidates=[...known].reverse().filter(item=>item.kind==='assistant');
   let candidate:ActivityItem|undefined,card;
   for(const item of candidates){const parsed=readLesson(item.text);if(parsed){candidate=item;card=parsed;break;}}
-  if(!candidate||!card){if(!this.state.lesson)this.state.lessonStatus='missing';return;}
+  if(!candidate||!card){if(context){this.state.lesson=context;this.state.lessonStatus=undefined;}else if(!this.state.lesson)this.state.lessonStatus='missing';return;}
   const key=candidate.id+'|'+JSON.stringify(card);if(this.lessonKey===key)return;this.lessonKey=key;
   this.state.lessonStatus='checking';this.emit();
   let cursor=this.state.nextItems;
   for(let page=0;page<17;page++){
    if(selection!==this.epoch||this.disposed)return;
-   const verified=verifyLesson(card,candidate.id,[...(this.state.editHistory??[]),...this.state.items],this.state.roots.filter(root=>!root.unavailable).map(root=>root.path),true);
-   if(verified){this.state.lesson=verified;this.state.lessonStatus=undefined;return;}
+   const verified=verifyLesson(card,candidate.id,[...(this.state.editHistory??[]),...known],roots,true);
+   if(verified){const fresh=!!card.requestId&&this.requests.get(this.selected!)?.requestId===card.requestId;this.state.lesson=verified;this.state.lessonStatus=undefined;if(fresh&&this.state.lessonRequest==='queued')this.requestState(this.selected!,undefined);return;}
    if(page===16||!cursor||!this.selected||!this.client)break;
    try{const response=await this.pageItems(this.selected,cursor);if(selection!==this.epoch||this.disposed)return;
     const edits=((response.data??[]).map(activityItem).filter(Boolean) as ActivityItem[]).filter(item=>item.kind==='change');
@@ -179,6 +202,8 @@ export class Companion {
   if(selection===this.epoch&&!this.disposed)this.state.lessonStatus='unverified';
  }
  refreshLesson(){this.lessonKey='';this.refresh();}
+ requestState(id:string,status:CompanionState['lessonRequest'],requestId?:string){if(status)this.requests.set(id,{status,requestId:requestId||this.requests.get(id)?.requestId});else this.requests.delete(id);if(this.selected===id){this.state.lessonRequest=status;this.emit();}}
+ canRequest(id:string){return !['sending','queued','uncertain'].includes(this.requests.get(id)?.status||'');}
  async reviewFile(file:string,line?:number,comparison?:EditorComparison){
   const root=this.state.root;if(!root||!this.state.tree?.changes?.some(c=>c.path===file))return;
   const epoch=++this.reviewEpoch,selection=this.epoch;

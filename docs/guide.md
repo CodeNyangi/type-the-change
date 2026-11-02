@@ -2,9 +2,9 @@
 
 Choose a task. The picker starts with five recent tasks from this project and its linked worktrees. Expand older tasks or other projects explicitly.
 
-If there is no explanation, select **Ask Codex to explain a change**. TTC copies a request and opens the original Codex chat. You must paste and send it. TTC never submits the message or runs another agent. Let active work finish before sending the request.
+If there is no explanation, select **Ask Codex to explain a change**. TTC uses the official `codex queue --thread … --message … --resume` command to deliver one request to that exact existing chat. Active work keeps its Codex owner. The panel shows sending, queued, unsupported, failed or uncertain delivery; duplicate clicks are blocked. Nothing is sent by merely opening or refreshing TTC. If delivery is uncertain, check the original chat rather than resending.
 
-The existing Codex writes one concept, at most 12 lines per code excerpt and a short explanation of what changed and why. TTC reads only an explicit `ttc-lesson` card. Ordinary replies, setup instructions, logs and file metadata are never inferred to be lessons.
+The existing Codex writes one concept, at most 12 lines per code excerpt and a short explanation of what changed and why. TTC validates a `ttc-lesson` card against the original edit. Existing prose may also be shown as labelled context only if it explicitly names the exact file, immediately precedes that edit in the same turn and belongs to a registered worktree. It is not presented as an inferred explanation of a specific line. Setup instructions, arbitrary nearby replies and logs are excluded.
 
 The explanation and changed code appear immediately. There is no question, answer selection or reveal step. Previous code stays collapsed until opened. Longer code lines wrap within the sidebar.
 

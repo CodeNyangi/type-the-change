@@ -108,7 +108,7 @@ window.addEventListener('message',({data:s})=>{
  $('after').textContent=s.after??'';$('after').hidden=s.after==='';$('delete-hint').hidden=s.after!=='';$('before').textContent=s.before||'';
  $('reason').textContent=s.reason||'';$('reason').hidden=!s.reason;
  const j=s.judgment||{phase:'predict',prediction:'',evidence:''};const phase=j.phase;const done=phase==='done';$('guided-start').hidden=!s.guidedStart||phase!=='edit';
- $('prediction-form').hidden=phase!=='predict';$('actions').hidden=phase==='predict'||phase==='review';$('reflection').hidden=phase!=='review';$('proposal').hidden=phase==='predict';
+ $('prediction-form').hidden=phase!=='predict'||!!s.handoff;$('actions').hidden=phase==='predict'||phase==='review';$('reflection').hidden=phase!=='review';$('proposal').hidden=phase==='predict';
  $('next').hidden=phase!=='edit';$('next').disabled=!!s.checking;$('next-label').textContent=s.checking?'${t("검사 중…","Checking…")}':'${t("저장하고 검사","Save & check")}';$('edit').hidden=phase!=='edit';$('review').hidden=!done;$('again').hidden=!done;
  $('check-tools').hidden=phase==='predict';for(const button of $('check-tools').querySelectorAll('button'))button.disabled=!!s.checking;
  $('check-result').hidden=!s.check;$('cancel-check').hidden=!s.checking;

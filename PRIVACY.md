@@ -2,7 +2,7 @@
 
 ## Learning cards (0.8+)
 
-TTC displays only explicit learning cards authored in the original Codex chat. The quoted code is matched to a recorded edit in that same chat. The learning-card request is copied to the clipboard and the existing chat is opened; the person must paste and send it. TTC sends no prompt, model call or agent execution request.
+TTC displays Codex-authored explanations matched to recorded edits in the original chat. Existing public prose is eligible as labelled context only when it names the exact file and immediately precedes its edit in the same turn inside a registered worktree. An explicit click on **Ask Codex to explain a change** sends one bounded explanation prompt to that existing chat through the official `codex queue` command, retaining its original owner, model and permissions. The command may resume that original chat on the shared Codex server. No message is sent on startup, selection, refresh or notifications. TTC makes no direct model request and creates no separate agent.
 
 The learner payload contains bounded task metadata and one verified card, not the transcript, tool activity, branch inventory or operational replies. The explanation appears immediately, without answer selection. Legacy question/choice/answer fields are discarded. Cards are not written to a separate conversation or learning database.
 
@@ -13,7 +13,7 @@ Type the Change has no application backend, analytics, advertising, or telemetry
 
 ## Existing Codex chats (0.7+)
 
-TTC reads existing chats through the installed Codex app-server protocol. It first attempts a connection to an existing shared server; otherwise it starts only a local history-query transport. Its request allowlist contains initialization and thread list/read/turn/item/loaded-list operations. It never starts, resumes, forks, steers or interrupts a thread, runs model requests, selects a model, logs in, reads credential files or stores Codex tokens. Codex remains the owner of conversations, long-term memory, work and provider access. There is no direct OpenAI API request in the extension bundle.
+TTC reads existing chats through the installed Codex app-server protocol. It first attempts a connection to an existing shared server; otherwise it starts only a local history-query transport. Its request allowlist contains initialization and thread list/read/turn/item/loaded-list operations. The read connection never starts, resumes, forks, steers or interrupts a thread. The separate explicit explanation action described above uses Codex’s own message queue. TTC never chooses a model, logs in, reads credential files or stores Codex tokens. Codex remains the owner of conversations, long-term memory, work and provider access. There is no direct OpenAI API request in the extension bundle.
 
 Displayed chat records and source snapshots are bounded and held in memory, not persisted as another conversation database or semantic memory. Only the selected chat ID and UI/check preferences are kept in VS Code state. The source of history remains Codex. Reasoning payloads and raw tool output are excluded from the display. TTC does not scrape Codex databases or rollout file formats. It does not infer live execution from a saved interrupted/not-loaded record.
 

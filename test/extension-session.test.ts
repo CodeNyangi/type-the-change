@@ -22,7 +22,7 @@ async function fixture(){
   await writeFile(path.join(root,'a.ts'),beforeA);await writeFile(path.join(root,'b.ts'),beforeB);
   const documents=new Map<string,TestDocument>(),opening=new Map<string,Promise<TestDocument>>(),commands=new Map<string,(...args:unknown[])=>unknown>();
   const uiEvents:{type:'source'|'guide';viewColumn:number;preserveFocus:boolean}[]=[];
-  const panelStates:{file?:string;busy?:boolean}[]=[];
+  const panelStates:{file?:string;busy?:boolean;handoff?:boolean}[]=[];
   let beforeShowSource:(()=>Promise<void>)|undefined;
   const opened=new Set<(document:TestDocument)=>void>(),closed=new Set<(document:TestDocument)=>void>(),changed=new Set<(event:{document:TestDocument})=>void>();
   const disposable=()=>({dispose(){}}),event=(_handler:unknown)=>disposable();
@@ -55,7 +55,7 @@ async function fixture(){
       createWebviewPanel:(_type:string,_title:string,options:{viewColumn:number;preserveFocus:boolean})=>{
         uiEvents.push({type:'guide',...options});
         let receive:(message:unknown)=>void=()=>{};
-        return {...disposable(),viewColumn:options.viewColumn===-2?1:options.viewColumn,reveal(viewColumn:number,preserveFocus:boolean){this.viewColumn=viewColumn;uiEvents.push({type:'guide',viewColumn,preserveFocus});},onDidDispose:event,webview:{html:'',onDidReceiveMessage(handler:(message:unknown)=>void){receive=handler;return disposable();},async postMessage(state:{file?:string;busy?:boolean;type?:string;revision?:number;request?:number}){
+        return {...disposable(),viewColumn:options.viewColumn===-2?1:options.viewColumn,reveal(viewColumn:number,preserveFocus:boolean){this.viewColumn=viewColumn;uiEvents.push({type:'guide',viewColumn,preserveFocus});},onDidDispose:event,webview:{html:'',onDidReceiveMessage(handler:(message:unknown)=>void){receive=handler;return disposable();},async postMessage(state:{file?:string;busy?:boolean;handoff?:boolean;type?:string;revision?:number;request?:number}){
           if(!state.type){panelStates.push(state);queueMicrotask(()=>receive({command:'rendered',revision:state.revision}));}
           else if(state.type==='focusStep')queueMicrotask(()=>receive({command:'focused',request:state.request}));
           return true;
@@ -103,7 +103,7 @@ test('prediction cannot appear or accept text before pending native focus has fi
   try{
     await f.run('start');f.onShowSource(async()=>{reached();await pending;});
     const starting=f.api.startPlan(f.plan,f.root);await ready;
-    assert.equal(f.panelStates.at(-1)?.file,undefined);assert.equal(f.panelStates.at(-1)?.busy,true);
+    assert.equal(f.panelStates.at(-1)?.file,'a.ts','retain guide mode while source focus is pending');assert.equal(f.panelStates.at(-1)?.handoff,true);assert.equal(f.panelStates.at(-1)?.busy,true);
     await f.api.predict('too early');assert.equal(f.api.getState()?.judgment.phase,'predict');
     release();await starting;assert.equal(f.panelStates.at(-1)?.file,'a.ts');
     assert.equal(f.uiEvents.at(-1)?.type,'guide');assert.equal(f.uiEvents.at(-1)?.preserveFocus,true,'reveal alone cannot steal focus before the explicit handoff');
