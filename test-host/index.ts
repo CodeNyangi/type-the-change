@@ -488,6 +488,9 @@ async function testCompanion(api:ExtensionApi,root:string){
   await vscode.commands.executeCommand('typeTheChange.start');await vscode.commands.executeCommand('typeTheChange.selectChat',{id:'chat-one'});
   await wait(()=>api.companion.state.tree?.branch==='observer-task'&&!!api.companion.state.tree.changes?.length);
   assert.equal(api.companion.state.selected?.id,'chat-one');assert.equal(api.companion.state.mode,'history');assert.equal(api.companion.state.selected?.runtime,'notLoaded');
+  await wait(()=>!!api.companion.state.lesson);await vscode.commands.executeCommand('typeTheChange.openLessonDiff');
+  const cardDiff=vscode.window.tabGroups.activeTabGroup.activeTab!.input as vscode.TabInputTextDiff;
+  assert.equal((await vscode.workspace.openTextDocument(cardDiff.original)).getText(),'export const value = 1;\n');assert.equal((await vscode.workspace.openTextDocument(cardDiff.modified)).getText(),'export const value = 2;\n');
   await vscode.commands.executeCommand('typeTheChange.openChange',{file:'source.ts'});assert.ok(api.companion.state.review?.hunks.length);
   await vscode.commands.executeCommand('typeTheChange.openReviewDiff');
   assert.ok(vscode.window.tabGroups.all.some(g=>g.tabs.some(tab=>tab.input instanceof vscode.TabInputTextDiff&&tab.input.original.scheme==='ttc-codex-review'&&tab.input.modified.scheme==='ttc-codex-review')),'both comparison documents are immutable snapshots');

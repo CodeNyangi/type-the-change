@@ -75,11 +75,19 @@ export class CodexObserver {
  async read(method:string,params:Json={}){if(method==='initialize'||!OBSERVER_METHODS.has(method))throw new Error('Observer method not allowed');await this.start();return this.rpc(method,params);}
  dispose(){this.closed=true;this.close();}
 }
-export interface CodexThread {id:string;title:string;cwd:string;updatedAt:number;runtime:string;flags:string[];source?:string;preview?:string}
+export interface CodexThread {id:string;title:string;cwd:string;updatedAt:number;runtime:string;flags:string[];source?:string}
 export interface ActivityItem {id:string;turnId?:string;kind:'user'|'assistant'|'command'|'change'|'plan';text:string;cwd?:string;paths?:string[];diffs?:{path:string;diff:string}[];status?:string}
 export function threadSummary(raw:Json):CodexThread|undefined {
  if(typeof raw.id!=='string'||typeof raw.cwd!=='string')return;
- return {id:raw.id,title:String(raw.name||raw.preview||raw.id).slice(0,250),cwd:raw.cwd,updatedAt:Number(raw.updatedAt)||0,runtime:raw.status?.type||'notLoaded',flags:Array.isArray(raw.status?.activeFlags)?raw.status.activeFlags:[],source:typeof raw.source==='string'?raw.source:undefined,preview:typeof raw.preview==='string'?raw.preview.slice(0,1000):undefined};
+ return {id:raw.id,title:String(raw.name||raw.preview||raw.id).slice(0,250),cwd:raw.cwd,updatedAt:Number(raw.updatedAt)||0,runtime:raw.status?.type||'notLoaded',flags:Array.isArray(raw.status?.activeFlags)?raw.status.activeFlags:[],source:typeof raw.source==='string'?raw.source:undefined};
+}
+function recordedDiff(change:Json){
+ const source=change.diff.slice(0,256000) as string;
+ // Codex stores added files as their literal contents, rather than a patch.
+ // Only an explicit add can be converted to an empty-before comparison.
+ if(change.kind?.type!=='add')return source;
+ const text=source.replace(/\r\n/g,'\n'),lines=text.split('\n');if(lines.at(-1)==='')lines.pop();
+ return `@@ -0,0 +1,${lines.length} @@\n`+lines.map(line=>'+'+line+'\n').join('')+(text&&!text.endsWith('\n')?'\\ No newline at end of file\n':'');
 }
 export function activityItem(raw:Json):ActivityItem|undefined {
  const item=raw.item??raw;if(typeof item.id!=='string')return;
@@ -88,6 +96,6 @@ export function activityItem(raw:Json):ActivityItem|undefined {
  if(item.type==='userMessage')return {...base,kind:'user',text:(item.content??[]).filter((c:Json)=>c.type==='text'||c.type==='inputText').map((c:Json)=>c.text||'').join('\n').slice(0,12000)};
  if(item.type==='plan')return {...base,kind:'plan',text:String(item.text||'').slice(0,12000)};
  if(item.type==='commandExecution')return {...base,kind:'command',text:String(item.command||'').slice(0,240),cwd:typeof item.cwd==='string'?item.cwd:undefined};
- if(item.type==='fileChange')return {...base,kind:'change',text:'',paths:(item.changes??[]).map((c:Json)=>c.path).filter((p:unknown)=>typeof p==='string'),diffs:(item.changes??[]).filter((c:Json)=>typeof c.path==='string'&&typeof c.diff==='string').map((c:Json)=>({path:c.path,diff:c.diff.slice(0,256000)}))};
+ if(item.type==='fileChange')return {...base,kind:'change',text:'',paths:(item.changes??[]).map((c:Json)=>c.path).filter((p:unknown)=>typeof p==='string'),diffs:(item.changes??[]).filter((c:Json)=>typeof c.path==='string'&&typeof c.diff==='string').map((c:Json)=>({path:c.path,diff:recordedDiff(c)}))};
  // Reasoning, secrets, tool arguments and tool output are deliberately excluded.
 }

@@ -1,5 +1,14 @@
 # Privacy
 
+## Learning cards (0.8+)
+
+TTC displays only explicit learning cards authored in the original Codex chat. The quoted code is matched to a recorded edit in that same chat. The learning-card request is copied to the clipboard and the existing chat is opened; the person must paste and send it. TTC sends no prompt, model call or agent execution request.
+
+The learner payload contains bounded task metadata and one verified card, not the transcript, tool activity, branch inventory or operational replies. The explanation appears immediately, without answer selection. Legacy question/choice/answer fields are discarded. Cards are not written to a separate conversation or learning database.
+
+A removed worktree can supply a historical comparison only when its recorded absolute path and patch match the card. This uses existing chat data and immutable virtual documents; it does not access that worktree’s current filesystem. The explanation is Codex-authored content, not proof that behavior was executed or that understanding was measured.
+
+
 Type the Change has no application backend, analytics, advertising, or telemetry of its own.
 
 ## Existing Codex chats (0.7+)

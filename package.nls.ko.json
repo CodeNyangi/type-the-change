@@ -1,5 +1,5 @@
 {
-  "description": "VS Code의 코드 옆에서 기존 Codex 대화를 읽고, 짧은 변경을 직접 연습하세요.",
+  "description": "Codex가 코드를 바꾼 이유를 실제 변경과 함께 이해합니다.",
   "language.auto": "VS Code 표시 언어를 따릅니다.",
   "language.description": "Type the Change 언어입니다. 변경 즉시 적용됩니다.",
   "command.start": "Type the Change: 열기",

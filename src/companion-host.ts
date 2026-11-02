@@ -10,6 +10,7 @@ import {readWorkspaceFile} from './workspace-files.js';
 import {locateHunk,canPractice} from './change-review.js';
 import {text as t} from './locale.js';
 import {isLearningCode} from './learning-context.js';
+import {lessonPrompt} from './lesson.js';
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
 export function createCompanion(context:vscode.ExtensionContext,render:()=>void){
  let followTimer:NodeJS.Timeout|undefined,followSelection=false,followRevision=0;
@@ -79,6 +80,15 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
   const doc=vscode.workspace.textDocuments.find(d=>d.uri.toString()===practice!.uri);if(!doc)return;
   await vscode.commands.executeCommand('vscode.diff',virtual('your-code.txt',doc.getText()),virtual('codex-code.txt',h.after),t('내 코드 ↔ Codex 변경','My code ↔ Codex change'),{preview:false,viewColumn:vscode.ViewColumn.One});
  }
+ async function prepareLesson(){
+  trusted();const id=model.state.selected?.id;if(!id)return;
+  await vscode.env.clipboard.writeText(lessonPrompt(t('ko','en')==='ko'));
+  await vscode.env.openExternal(vscode.Uri.parse('codex://threads/'+encodeURIComponent(id)));
+ }
+ async function openLessonDiff(){
+  const lesson=model.state.lesson;if(!lesson)return;
+  await vscode.commands.executeCommand('vscode.diff',virtual('before/'+lesson.file,lesson.card.source.before),virtual('after/'+lesson.file,lesson.card.source.after),lesson.card.title,{preview:false,viewColumn:vscode.ViewColumn.One});
+ }
  async function source(){const r=model.state.review,h=r?.hunks[model.state.hunk];if(!r)return;
   await readWorkspaceFile(r.root,r.file,1024*1024);const document=await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(r.root,r.file)));
   const line=!r.recorded&&document.getText()===r.after?Math.min(Math.max(0,(h?.newLine||1)-1),document.lineCount-1):h?locateHunk(document.getText(),h):undefined;
@@ -110,6 +120,7 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
  const commands:Record<string,(value:any)=>unknown>={
   selectChat:(v)=>typeof v?.id==='string'?select(v.id):undefined,refreshChats:()=>model.refreshChats(),moreChats:()=>model.listMore(),olderActivity:()=>model.older(),olderEdits:()=>model.olderEdits(),
   learnLatest:async()=>pinReview(async()=>{if(await model.learnLatest())await openDiff();}),
+  prepareLesson,refreshLesson:()=>model.refreshLesson(),openLessonDiff,
   openCodexThread:async()=>{const id=model.state.selected?.id;if(id)await vscode.env.openExternal(vscode.Uri.parse('codex://threads/'+encodeURIComponent(id)));},
   pickWorktree:async()=>{const picked=await vscode.window.showQuickPick(model.state.roots.filter(r=>!r.unavailable).map(r=>({label:r.branch||r.head.slice(0,8),description:r.path,root:r.path})),{title:t('이 채팅과 함께 볼 작업공간','Worktree to inspect with this chat')});if(picked)model.chooseRoot(picked.root);},
   openChange:v=>typeof v?.file==='string'?pinReview(()=>model.reviewFile(v.file)):undefined,

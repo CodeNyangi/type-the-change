@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {parsePlan,resolveStep,inspectStep,validatePlanAgainstFiles,type Plan,type ResolvedStep} from './plan.js';
 import {readWorkspaceFile,readBridgeFile,writeBridgeFile,assertDistinctWorkspaceFiles,WorkspaceFileError,MAX_SOURCE_BYTES} from './workspace-files.js';
 import {createCompanion} from './companion-host.js';
-import {companionDisplay} from './companion-view.js';
+import {learningDisplay} from './companion-view.js';
 import {GuidePanel,type PanelState} from './panel.js';
 import {readPlanFile} from './plan-file.js';
 import {newJudgment,predict,beginReview,decide,invalidateJudgment,type Judgment,type Decision} from './judgment.js';
@@ -102,7 +102,7 @@ export function activate(context:vscode.ExtensionContext){
   }
   function render(){
     const workspace=workspaceOverview?summarizeWorkspace(workspaceOverview,(vscode.workspace.textDocuments||[]).filter(document=>document.isDirty&&document.uri.scheme==='file').map(document=>document.uri.fsPath)):undefined;
-    const common:PanelState={workspace,companion:{...companionDisplay(companion.model.state,(vscode.workspace.workspaceFolders||[]).map(folder=>folder.uri.fsPath)),...(composer.error?{error:composer.error}:{})},project:currentProject()?.name,busy,phase:composer.phase,error:composer.error,errorAction:composer.errorAction,notice:composer.notice};
+    const common:PanelState={workspace,companion:{...learningDisplay(companion.model.state,(vscode.workspace.workspaceFolders||[]).map(folder=>folder.uri.fsPath)),...(composer.error?{error:composer.error}:{})},project:currentProject()?.name,busy,phase:composer.phase,error:composer.error,errorAction:composer.errorAction,notice:composer.notice};
     if(!session){panel.update(common);return;}
     if(!session.ready){panel.update({...common,busy:true,phase:t('변경 여는 중','Opening change')});return;}
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);

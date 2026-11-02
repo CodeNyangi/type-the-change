@@ -7,7 +7,7 @@ import {chooseWorktree} from '../src/companion.js';
 import {eventFromHook,mergeHooks} from '../src/codex-events.js';
 import {parseHunks,loadChange,locateHunk,canPractice,hunkAtLine} from '../src/change-review.js';
 import {git} from '../src/worktrees.js';
-import {companionDisplay,companionHtml} from '../src/companion-view.js';
+import {learningDisplay,companionHtml} from '../src/companion-view.js';
 const thread={id:'one',title:'Task',cwd:'/repo',updatedAt:0,runtime:'notLoaded',flags:[]};
 const roots=[{path:'/repo',head:'a',branch:'main',current:true},{path:'/tmp/task',head:'b',branch:'task',current:false},{path:'/tmp/other',head:'c',branch:'other',current:false}];
 test('worktree linkage follows activity in the same repository and does not follow arbitrary paths',async()=>{
@@ -78,7 +78,7 @@ test('review pins combined staged/working/unsaved bytes without changing reposit
 });
 test('display frames omit full file copies and large recorded patches',()=>{
  const full='x'.repeat(50000),state:any={threads:[],items:[{id:'c',kind:'change',text:'',paths:['a'],diffs:[{path:'a',diff:full}]}],roots:[],mode:'history',loading:false,hunk:0,review:{file:'a',root:'/repo',head:'a',before:full,after:full,hash:'abc',hunks:[{before:full,after:full,patch:full,oldLine:1,newLine:1}]}};
- const view=companionDisplay(state);assert.equal((view.review as any).before,undefined);assert.equal((view.items[0] as any).diffs,undefined);assert.equal(view.review?.canPractice,false);assert.equal(view.review?.hunk?.hint,undefined);assert.ok(JSON.stringify(view).length<2000);
+ const view=learningDisplay(state);assert.equal(Object.hasOwn(view,'review'),false);assert.equal(Object.hasOwn(view,'items'),false);assert.ok(JSON.stringify(view).length<2000);
  const html=companionHtml('nonce',true);assert.ok(!html.includes('id="intent"'));assert.ok(!html.includes('data-command="generate"'));assert.ok(html.includes('Codex 채팅'));
 });
 
@@ -87,7 +87,7 @@ test('committed chat edits remain discoverable and separate from unrelated workt
   {id:'older',kind:'change',text:'',diffs:[{path:'/repo/source.ts',diff:'@@ -1 +1 @@\n-old\n+new\n'}]},
   {id:'latest',kind:'change',text:'',diffs:[{path:'/repo/source.ts',diff:'@@ -1 +1 @@\n-new\n+latest\n'},{path:'/other/private.ts',diff:'excluded'}]},
  ],root:'/repo',roots:[],mode:'history',loading:false,hunk:0,tree:{changes:[]}};
- assert.deepEqual(companionDisplay(state).recordedChanges,[{id:'latest',file:'/repo/source.ts',label:'source.ts'}]);
+ assert.equal(Object.hasOwn(learningDisplay(state),'recordedChanges'),false);
 });
 
 test('recorded learning retrieves the original request of its exact turn without starting an agent',async()=>{
@@ -143,7 +143,7 @@ test('finding edits skips command-only pages and keeps the result outside the fu
  try{
   model.state.items=Array.from({length:300},(_,i)=>({id:'live-'+i,kind:'command' as const,text:'check'}));
   await model.olderEdits();assert.deepEqual(cursors,['p1','p2','p3','p4']);assert.equal(model.state.items.length,300);assert.equal(model.state.items[0].id,'live-0');
-  const display=companionDisplay(model.state);assert.deepEqual(display.recordedChanges,[{id:'past-edit',file:'/repo/a.ts',label:'a.ts'}]);assert.equal((display as any).editHistory,undefined);assert.equal(model.state.nextEdits,'p5');
+  const display=learningDisplay(model.state);assert.equal(model.state.editHistory?.[0]?.id,'past-edit');assert.equal((display as any).editHistory,undefined);assert.equal(model.state.nextEdits,'p5');
   await model.reviewRecorded('past-edit','/repo/a.ts');assert.equal(model.state.review?.hunks[0].after,'new\n');
  }finally{model.dispose();}
 });

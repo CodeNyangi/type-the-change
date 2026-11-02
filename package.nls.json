@@ -1,5 +1,5 @@
 {
-  "description": "Read existing Codex context beside your VS Code changes and practice short edits.",
+  "description": "Understand why Codex changed the code, beside the actual change.",
   "language.auto": "Follow the VS Code display language.",
   "language.description": "Language for Type the Change. Changes apply immediately.",
   "command.start": "Type the Change: Open",

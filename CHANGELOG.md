@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — 2026-11-02
+
+- Replace transcript and file-oriented learning with one explicit Codex-authored learning card: the reason for a change and its key code, visible immediately without a quiz.
+- Never turn ordinary requests, operational replies, logs or arbitrary patches into lessons.
+- Support older cards without retaining their quiz fields, and wrap dedented code within narrow sidebars.
+- Match card code to an actual recorded edit in the same chat before displaying it, including immutable historical worktree snapshots.
+- Copy a bounded learning-card request and open the original Codex chat; TTC does not send it, start an agent or create a memory store.
+- Keep project task selection to five recent tasks. Remove transcript, branch, timestamp and edit inventories from the learner screen and its payload.
+
 ## 0.7.2 — 2026-11-02
 
 - Start with five recent Codex tasks for the current project; expand or search other projects on demand.
