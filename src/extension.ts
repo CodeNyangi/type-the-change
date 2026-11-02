@@ -104,7 +104,6 @@ export function activate(context:vscode.ExtensionContext){
     const workspace=workspaceOverview?summarizeWorkspace(workspaceOverview,(vscode.workspace.textDocuments||[]).filter(document=>document.isDirty&&document.uri.scheme==='file').map(document=>document.uri.fsPath)):undefined;
     const common:PanelState={workspace,companion:{...learningDisplay(companion.model.state,(vscode.workspace.workspaceFolders||[]).map(folder=>folder.uri.fsPath)),...(composer.error?{actionError:composer.error.slice(0,400)}:{})},project:currentProject()?.name,busy,phase:composer.phase,error:composer.error,errorAction:composer.errorAction,notice:composer.notice};
     if(!session){panel.update(common);return;}
-    if(!session.ready){panel.update({...common,busy:true,phase:t('변경 여는 중','Opening change')});return;}
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);
     // Disposal temporarily removes comparison evidence. Keep the recorded
     // review until reopening establishes whether code actually changed.
@@ -113,7 +112,10 @@ export function activate(context:vscode.ExtensionContext){
     const complete=s.complete&&!s.contextChanged&&!unavailable&&s.judgment.phase==='done';
     const inspectionMessages={untouched:'',editing:t('제안과 다른 코드 · 직접 판단해 주세요.','Your alternative · Check the evidence.'),matched:t('글자는 같아요 · 근거를 확인해 주세요.','Text matches · Check the evidence.'),outside:t('안내 범위 밖도 바뀌었어요. 유지하려면 새 수정안으로 확인하세요.','Other code changed · Request a new plan to keep it.')};
     if(s.check&&s.check.status!=='running'&&s.check.sourceHash!==sourceHash(s))s.check={...s.check,status:'stale'};
-    panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:inspectionMessages[inspection.status],contextChanged:!!s.contextChanged,canContinue:!s.contextChanged&&!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:!s.contextChanged&&!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan,check:s.check,checking:!!s.checking,guidedStart:s.guidedStart});
+    // Keep the guide mode and frame while preparing the next source. A
+    // file-less loading state would recreate the companion and guide iframes.
+    panel.update({...common,busy:!s.ready||busy,phase:!s.ready?t('변경 여는 중','Opening change'):composer.phase,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:inspectionMessages[inspection.status],contextChanged:!!s.contextChanged,canContinue:s.ready&&!s.contextChanged&&!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:s.ready&&!s.contextChanged&&!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan,check:s.check,checking:!!s.checking,guidedStart:s.guidedStart});
+    if(!s.ready)return;
     status.text=complete?'$(check) '+t('판단 기록됨','Decision recorded'):`$(edit) ${s.index+1}/${s.plan.steps.length}`;
     status.tooltip='Type the Change';status.command='typeTheChange.start';
     clearDecorations();

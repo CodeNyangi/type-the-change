@@ -10,6 +10,7 @@
 - Keep project task selection to five recent tasks. Remove transcript, branch, timestamp and edit inventories from the learner screen and its payload.
 - Align native CI and the optional walkthrough recorder with the current entry points; keep imported-plan errors separate from Codex connection errors.
 - Normalize Windows review paths, reject generated/test artifacts with either path separator, and create native-check report directories on clean CI runners.
+- Preserve the optional editing guide's frame between source steps instead of briefly recreating the task screen.
 
 ## 0.7.2 — 2026-11-02
 
