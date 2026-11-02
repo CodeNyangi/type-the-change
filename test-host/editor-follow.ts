@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import assert from 'node:assert/strict';
-import {readFile,writeFile} from 'node:fs/promises';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import type {Companion} from '../src/companion.js';
 export async function run(){
@@ -29,6 +29,7 @@ export async function run(){
  model.followAgain();await vscode.commands.executeCommand('typeTheChange.followEditor');
  await wait(()=>model.state.review?.after==='const value = 4;\n');
  assert.equal(model.state.review!.dirty,true);assert.equal(await readFile(uri.fsPath,'utf8'),'const value = 3;\n');
- await writeFile(process.env.TTC_FIXTURE_REPORT!,JSON.stringify({checkedAt:new Date().toISOString(),syntheticFixture:true,nativeScmStaged:true,nativeScmUnstaged:true,plainEditor:true,unsavedBuffer:true,sourcePreserved:true},null,2)+'\n');
+ const report=process.env.TTC_FIXTURE_REPORT!;await mkdir(path.dirname(report),{recursive:true});
+ await writeFile(report,JSON.stringify({checkedAt:new Date().toISOString(),syntheticFixture:true,nativeScmStaged:true,nativeScmUnstaged:true,plainEditor:true,unsavedBuffer:true,sourcePreserved:true},null,2)+'\n');
  console.log('NATIVE EDITOR FOLLOW PASSED');model.dispose();
 }

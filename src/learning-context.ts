@@ -2,6 +2,7 @@ import path from 'node:path';
 import type {ActivityItem} from './codex-observer.js';
 
 export function isLearningCode(file:string){
+ file=file.replaceAll('\\','/');
  return !/(^|\/)(?:artifacts?|docs?|test(?:-host)?|tests|__tests__|fixtures?|node_modules|dist|build|\.git)(\/|$)/i.test(file)
   && !/(?:^|\/)(?:test_[^/]+|[^/]+[._](?:test|spec))\.[^/]+$/i.test(file)
   && /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|swift|rb|php|cs|cpp|cc|c|h|vue|svelte|sql|sh)$/i.test(file);

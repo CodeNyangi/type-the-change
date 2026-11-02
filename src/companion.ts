@@ -18,6 +18,7 @@ export interface CompanionState {
  editor?:{file:string;outside:boolean;error?:boolean};reviewOpened?:boolean;
 }
 export function inside(root:string,file:string){const rel=path.relative(root,file);return !path.isAbsolute(rel)&&rel!=='..'&&!rel.startsWith('..'+path.sep);}
+const relativeFile=(root:string,file:string)=>path.relative(root,file).split(path.sep).join('/');
 export async function chooseWorktree(thread:CodexThread,items:ActivityItem[],roots:Worktree[],manual?:string,live?:CodexEvent){
  const canonical=async(p:string)=>realpath(p).catch(()=>p);
  const match=(p:string)=>roots.filter(r=>!r.unavailable&&inside(r.path,p)).sort((a,b)=>b.path.length-a.path.length)[0]?.path;
@@ -144,7 +145,7 @@ export class Companion {
    const root=this.state.root,tree=this.state.roots.find(r=>r.path===root);
    if(tree){
     const value=await readWorktree(tree,this.run,undefined,true);if(epoch!==this.epoch||this.disposed)return;
-    for(const absolute of this.dirtyPaths())if(inside(tree.path,absolute)&&value.changes){const file=path.relative(tree.path,absolute),existing=value.changes.find(c=>c.path===file);if(existing)existing.unsaved=true;else value.changes.push({path:file,status:' M',conflict:false,unsaved:true});}
+    for(const absolute of this.dirtyPaths())if(inside(tree.path,absolute)&&value.changes){const file=relativeFile(tree.path,absolute),existing=value.changes.find(c=>c.path===file);if(existing)existing.unsaved=true;else value.changes.push({path:file,status:' M',conflict:false,unsaved:true});}
     this.state.tree=value;this.state.worktreeError=!!value.error;
     if(this.state.review&&!this.state.review.recorded){
      const review=this.state.review;if(review.root!==root||review.head!==value.head)review.stale=true;
@@ -193,7 +194,7 @@ export class Companion {
   if(!root||!this.state.tree||this.state.ambiguous)return;
   const canonical=await realpath(absolute).catch(()=>absolute);
   if(revision!==this.followEpoch||selection!==this.epoch||root!==this.state.root||this.disposed)return;
-  const outside=!inside(root,canonical),file=outside?canonical:path.relative(root,canonical);
+  const outside=!inside(root,canonical),file=outside?canonical:relativeFile(root,canonical);
   const changed=!outside&&!!this.state.tree.changes?.some(c=>c.path===file);
   const key=JSON.stringify([this.selected,root,canonical,changed,comparison?.key]);
   if(key===this.followKey){
@@ -218,7 +219,7 @@ export class Companion {
  followAgain(){this.followKey='';this.state.editor=undefined;this.clearReview();}
  async reviewRecorded(itemId:string,file:string){
   const item=[...this.state.items,...(this.state.editHistory??[])].find(i=>i.id===itemId&&i.kind==='change');const change=item?.diffs?.find(c=>c.path===file);if(!change||!this.state.root)return;
-  const relative=path.isAbsolute(file)?path.relative(this.state.root,file):file;if(relative.startsWith('..')||path.isAbsolute(relative))return;
+  const relative=path.isAbsolute(file)?relativeFile(this.state.root,file):file;if(relative.startsWith('..')||path.isAbsolute(relative))return;
   const revision=++this.reviewEpoch,selection=this.epoch;
   const hunks=parseHunks(change.diff);this.state.review={root:this.state.root!,file:relative,head:'',before:'',after:'',hash:itemId+':'+file,hunks,recorded:true};this.state.hunk=0;this.state.practice=undefined;this.state.reviewOpened=false;this.state.reviewContext=undefined;this.emit();
   await this.loadReviewContext(item!,revision,selection);
@@ -234,7 +235,7 @@ export class Companion {
     if(selection!==this.epoch||revision!==this.reviewEpoch||this.disposed)return false;
     const registered=this.state.roots.filter(tree=>!tree.unavailable).map(tree=>tree.path);if(!registered.length)registered.push(root);
     const target=registered.filter(tree=>inside(tree,absolute)).sort((a,b)=>b.length-a.length)[0];
-    const relative=target?path.relative(target,absolute):'';
+    const relative=target?relativeFile(target,absolute):'';
     if(target&&isLearningCode(relative)&&parseHunks(change.diff).length){
      // This explicit action follows an edit recorded in this exact chat and
      // verified against Git's inventory, even after a tool ran in the main repo.

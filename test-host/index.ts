@@ -251,17 +251,22 @@ async function nativeTypingAvailable(root:string){
   const probeFile=path.join(root,'native-focus-probe.txt');
   await writeFile(probeFile,'');
   const probe=await vscode.workspace.openTextDocument(vscode.Uri.file(probeFile));
-  await vscode.window.showTextDocument(probe,{viewColumn:vscode.ViewColumn.One,preserveFocus:false,preview:false});
-  await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
-  let changed=false;
-  const subscription=vscode.workspace.onDidChangeTextDocument(event=>{if(event.document.uri.toString()===probe.uri.toString())changed=true;});
-  try{
+  // Startup/sidebar IPC can finish after showTextDocument returns. Retry only
+  // an untouched disposable probe; real typing cases below remain strict.
+  for(let attempt=0;attempt<3;attempt++){
+    await vscode.window.showTextDocument(probe,{viewColumn:vscode.ViewColumn.One,preserveFocus:false,preview:false});
+    await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+    const activeUntil=Date.now()+2000;
+    while(vscode.window.activeTextEditor?.document!==probe&&Date.now()<activeUntil)await new Promise(resolve=>setTimeout(resolve,25));
+    if(vscode.window.activeTextEditor?.document!==probe){console.log(`HOST TEST: native probe editor not active on attempt ${attempt+1}`);continue;}
     await vscode.commands.executeCommand('type',{text:'x'});
     // The native command and TextDocument change arrive on different RPC paths.
-    const deadline=Date.now()+500;
-    while(!changed&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
-  }finally{subscription.dispose();}
-  if(probe.getText()==='x')return true;
+    const deadline=Date.now()+2000;
+    while(!probe.getText()&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+    if(probe.getText()==='x')return true;
+    assert.equal(probe.getText(),'','unexpected native input must not be cleared or hidden');
+    console.log(`HOST TEST: native probe focus not ready on attempt ${attempt+1}`);
+  }
   const explanation=`native keyboard cases: VS Code did not accept the type command (windowFocused=${vscode.window.state.focused}). Unlock and focus the host window to exercise automatic pairs, indentation, CRLF typing, sequential typing, and deleteLeft.`;
   if(process.platform!=='darwin'||process.env.TTC_REQUIRE_NATIVE_TYPING==='1')assert.fail(explanation);
   console.log(`HOST TEST SKIP: ${explanation}`);
