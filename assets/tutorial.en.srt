@@ -1,0 +1,43 @@
+1
+00:00:00,001 --> 00:00:01,919
+Open Type the Change from the >_ icon.
+
+2
+00:00:01,919 --> 00:00:03,990
+Try demo. No account needed.
+
+3
+00:00:03,990 --> 00:00:06,751
+1. Predict. Ctrl+Enter returns to your code.
+
+4
+00:00:06,751 --> 00:00:09,615
+This practice suggestion is wrong: return → break.
+
+5
+00:00:09,615 --> 00:00:09,666
+2. Ctrl+Alt+Enter saves and checks.
+
+6
+00:00:09,666 --> 00:00:12,161
+Choose a check once. Save only reviewed files.
+
+7
+00:00:12,161 --> 00:00:14,564
+Expected 30. Got 10. Evidence beside your code.
+
+8
+00:00:14,564 --> 00:00:18,465
+3. Explain. Ctrl+Enter → arrow → Enter to reject.
+
+9
+00:00:18,465 --> 00:00:19,680
+Ctrl+Alt+T returns to the change. Fix it yourself.
+
+10
+00:00:19,680 --> 00:00:22,803
+Check again with the same shortcut.
+
+11
+00:00:22,803 --> 00:00:25,404
+The check runs. You decide what stays.

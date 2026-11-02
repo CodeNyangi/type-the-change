@@ -2,7 +2,7 @@
 
 The extension now carries a review through prediction, native editing, an explicitly selected check, comparison and a human decision. Continuing and a zero task exit never accept a proposal.
 
-Release checks are attached to the [owner review PR](https://github.com/CodeNyangi/type-the-change/pull/1/checks). The packaged README links are frozen to the package source commit; the recording stores its own source commit in `assets/recording.json`.
+Runtime source `eea0340ad9476025740ada84ca1e0536ee3fa090` passed [all required checks](https://github.com/CodeNyangi/type-the-change/actions/runs/41367287195), including the 25-second English recording and 12 real workbench flow groups. Release checks are attached to the [owner review PR](https://github.com/CodeNyangi/type-the-change/pull/1/checks). The packaged README links are frozen to the package source commit; the recording stores its own source commit in `assets/recording.json`.
 
 ## Verified behavior
 
