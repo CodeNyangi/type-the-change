@@ -20,6 +20,7 @@ type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;re
 const USAGE='https://chatgpt.com/settings/usage';
 export function activate(context:vscode.ExtensionContext){
   let session:Session|undefined,busy=false,timer:NodeJS.Timeout|undefined,generationAbort:AbortController|undefined;
+  let sourceFocus:{session:Session;promise:Promise<void>}|undefined;
   let sessionEpoch=0;
   let statusWrite:Promise<void>=Promise.resolve();
   const checks=new TaskChecks(context.workspaceState);
@@ -110,9 +111,16 @@ export function activate(context:vscode.ExtensionContext){
   async function focus(select=false){
     if(!session)return;
     const s=session;
+    // Prediction already returns to code. A click/shortcut during that handoff
+    // joins it instead of reselecting the range after typing has begun.
+    if(sourceFocus?.session===s)return sourceFocus.promise;
+    const promise=focusSource(s,select);sourceFocus={session:s,promise};
+    try{await promise;}finally{if(sourceFocus?.promise===promise)sourceFocus=undefined;}
+  }
+  async function focusSource(s:Session,select:boolean){
     await panel.prepareSourceFocus();if(session!==s)return;
     if(s.document.isClosed){const {document}=await source(s.root,s.plan.steps[s.index].file);if(session!==s)return;bindDocument(s,document);}
-    const editor=await vscode.window.showTextDocument(s.document,{viewColumn:vscode.ViewColumn.One,preserveFocus:false,preview:false});
+    const editor=await vscode.window.showTextDocument(s.document,{viewColumn:vscode.ViewColumn.One,preserveFocus:true,preview:false});
     if(session!==s)return;
     const inspection=inspectSession(s);select=select||inspection.status==='untouched';
     if(inspection.status!=='outside'){
@@ -121,8 +129,8 @@ export function activate(context:vscode.ExtensionContext){
       editor.selection=select?new vscode.Selection(start,end):new vscode.Selection(end,end);
       editor.revealRange(new vscode.Range(start,end),vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
-    // A panel reveal and TextDocument activation travel on different RPC paths.
-    // Finish the explicit return-to-code action in the workbench before typing.
+    // Apply selection before transferring focus so the first key cannot land
+    // before a late selection reset. Rendering and workbench focus are separate.
     await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
     if(session!==s)return;
     panel.releaseFocus();render();
@@ -159,6 +167,8 @@ export function activate(context:vscode.ExtensionContext){
   async function chooseCheck(){const s=session;if(!s||s.checking)return;await checks.select(s.root,true,s.demoTask);}
   async function runCheck(){
     const s=session;if(!s?.ready||s.checking)return;
+    if(sourceFocus?.session===s)await sourceFocus.promise;
+    if(session!==s||s.checking)return;
     if(!s.judgment.prediction){await panel.focusStep();return;}
     s.checking=true;render();
     try{
@@ -345,6 +355,8 @@ export function activate(context:vscode.ExtensionContext){
   async function review(){
     if(!session)return;
     const s=session;
+    if(sourceFocus?.session===s)await sourceFocus.promise;
+    if(session!==s)return;
     if(!s.judgment.prediction)throw Error('먼저 바뀔 결과를 한 줄로 예상해 보세요.');
     if(!await refreshSessionDocuments(s))return;
     const file=!s.complete||s.originalFiles.size===1?s.plan.steps[s.index].file:await vscode.window.showQuickPick([...s.originalFiles.keys()],{title:'변경 확인'});

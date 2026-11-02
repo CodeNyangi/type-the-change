@@ -89,7 +89,7 @@ test('starting guidance from the home panel opens source first and reveals the g
     await f.run('start');f.uiEvents.length=0;
     await f.api.startPlan(f.plan,f.root);
     assert.deepEqual(f.uiEvents.map(({type,viewColumn,preserveFocus})=>({type,viewColumn,preserveFocus})),[
-      {type:'source',viewColumn:1,preserveFocus:false},
+      {type:'source',viewColumn:1,preserveFocus:true},
       {type:'guide',viewColumn:2,preserveFocus:true},
     ]);
     await f.run('start');
@@ -120,6 +120,18 @@ test('stopping while native source focus is pending cannot reveal stale guidance
     const starting=f.api.startPlan(f.plan,f.root);await ready;f.uiEvents.length=0;await f.api.stop();release();await starting;
     assert.equal(f.api.getState(),null);
     assert.deepEqual(f.uiEvents.filter(event=>event.type==='guide'),[],'a stopped start must not reopen or move the guide');
+  }finally{release();await f.close();}
+});
+test('a return-to-code action during prediction joins the pending handoff instead of resetting selection twice',async()=>{
+  const f=await fixture();let release!:()=>void,reached!:()=>void,calls=0;
+  const ready=new Promise<void>(resolve=>reached=resolve),pending=new Promise<void>(resolve=>release=resolve);
+  try{
+    await f.api.startPlan(f.plan,f.root);
+    f.onShowSource(async()=>{calls++;reached();await pending;});
+    const predicting=f.api.predict('The constant becomes two.');await ready;
+    const returning=f.run('focus');await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(calls,1,'an overlapping click cannot enqueue another late range selection');
+    release();await Promise.all([predicting,returning]);assert.equal(calls,1);
   }finally{release();await f.close();}
 });
 

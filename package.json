@@ -1,7 +1,7 @@
 {
   "name": "type-the-change",
   "displayName": "Type the Change",
-  "description": "Practice judgment with AI code: predict the outcome, inspect the diff, and keep or reject a proposal with evidence. VS Code, ChatGPT and MCP.",
+  "description": "Practice judgment with AI code. Predict, check, and decide.",
   "version": "0.4.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
@@ -52,7 +52,10 @@
         "command": "typeTheChange.start",
         "title": "Type the Change: Start",
         "shortTitle": "Type the Change",
-        "icon": {"light": "assets/toolbar-light.svg", "dark": "assets/toolbar-dark.svg"}
+        "icon": {
+          "light": "assets/toolbar-light.svg",
+          "dark": "assets/toolbar-dark.svg"
+        }
       },
       {
         "command": "typeTheChange.generate",
@@ -128,7 +131,13 @@
       }
     ],
     "menus": {
-      "editor/title": [{"command": "typeTheChange.start", "when": "resourceScheme == file", "group": "navigation@1"}]
+      "editor/title": [
+        {
+          "command": "typeTheChange.start",
+          "when": "resourceScheme == file",
+          "group": "navigation@1"
+        }
+      ]
     },
     "keybindings": [
       {

@@ -6,7 +6,7 @@ Release checks are attached to the [owner review PR](https://github.com/CodeNyan
 
 ## Verified behavior
 
-- 189 application tests pass locally and on Linux; Windows passes the applicable suite with two POSIX-specific cases skipped, including repeated competing-lock recovery.
+- 190 application tests pass locally and on Linux; Windows passes the applicable suite with two POSIX-specific cases skipped, including repeated competing-lock recovery.
 - 450 headless layouts cover 25 states, three widths, three theme families and both English/Korean main controls. Three keyboard interaction groups exercise production panel commands, IME composition guards and explicit decision controls.
 - Real VS Code 1.142.0 and minimum supported 1.100.0 run native editor and task checks. Sequential native keyboard handoffs run five times per host. An incorrect `break` fails; a corrected `continue` passes. Unrelated dirty files remain unsaved, edits invalidate task evidence, and passing never completes a human judgment.
 - Real workbench UI covers cross-directory/Korean filename selection, prediction, typing, comparison, explicit decisions, MCP plans, JSON recovery, task selection and keyboard continuation. A generated repository contains 5,000 files with 200 lines each (1,000,000 total lines); a file beyond the initial suggestion limit is found by name.
@@ -14,7 +14,7 @@ Release checks are attached to the [owner review PR](https://github.com/CodeNyan
 
 ## Problems caught during verification
 
-Opening a source document could steal focus after prediction became visible. Prediction now appears after source preparation, with focus assigned to the guide. A later repeated run exposed delayed webview focus messages. The handoff now waits for both workbench and iframe acknowledgments, disables note input while moving, and cancels obsolete requests instead of replaying them when a webview becomes ready. Returning to code drains earlier rendered state before native input resumes.
+Opening a source document could steal focus after prediction became visible. Prediction now appears after source preparation, with focus assigned to the guide. A later repeated run exposed delayed webview focus messages. The handoff now waits for both workbench and iframe acknowledgments, disables note input while moving, and cancels obsolete requests instead of replaying them when a webview becomes ready. Returning to code drains earlier rendered state before native input resumes. Overlapping return actions share one handoff, and the source selection is prepared before native focus, preventing a late reselection from removing the first character.
 
 VS Code tasks normally save all dirty editors. The first task picker now explicitly describes setting `task.saveBeforeRun` to `never` before applying it to the workspace, or to user settings if no folder is open. Cancel and compare-only choices make no preference change. The extension then saves only reviewed documents and checks the preference again before task launch. The selected preference also affects other tasks in its scope and can be changed in VS Code settings.
 

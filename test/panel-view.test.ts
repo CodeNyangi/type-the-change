@@ -153,6 +153,7 @@ test('task results remain separate from judgment and checking disables duplicate
 test('focus handoff disables notes and submission until the target view is ready',async()=>{
  const v=view();v.update({...step,handoff:true,revision:7,judgment:{phase:'predict',prediction:'',evidence:''}});
  assert.equal(v.get<HTMLTextAreaElement>('prediction').disabled,true);assert.deepEqual(v.messages.at(-1),{command:'rendered',revision:7});
+ assert.equal(v.get<HTMLButtonElement>('file').disabled,true);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);
  v.get<HTMLTextAreaElement>('prediction').value='아직 화면 준비 중';const count=v.messages.length;
  v.get('prediction-form').dispatchEvent(new v.window.Event('submit',{cancelable:true}));v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.equal(v.messages.length,count);
  v.update({...step,handoff:true,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});assert.equal(v.get<HTMLTextAreaElement>('evidence').disabled,true);
