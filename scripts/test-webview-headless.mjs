@@ -1,0 +1,217 @@
+/** Production webview in an isolated, always-headless Chromium process.
+ * Run: node --import tsx scripts/test-webview-headless.mjs
+ * No VS Code, native desktop input, existing browser profile, or live account.
+ */
+import assert from 'node:assert/strict';
+import {mkdir, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+import {panelHtml,PANEL_COMMANDS} from '../src/panel-view.ts';
+
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const output=path.resolve(process.env.TTC_WEBVIEW_ARTIFACT_DIR||'artifacts/headless-webview');
+await mkdir(output,{recursive:true});
+const nonce='headless-test-host';
+const bootstrap=`<script nonce="${nonce}">
+window.__ttcHost={messages:[],draft:{}};
+window.acquireVsCodeApi=()=>({postMessage:message=>window.__ttcHost.messages.push(message),getState:()=>window.__ttcHost.draft,setState:state=>window.__ttcHost.draft=state});
+</script>`;
+const html=(mac,korean=true)=>panelHtml(nonce,mac,korean).replace('<script nonce=',bootstrap+'<script nonce=');
+
+// Representative VS Code theme tokens. This verifies the webview's rendering
+// against supplied themes; it does not run VS Code or claim native theme QA.
+const themes={
+  dark:{foreground:'#ddd','editor-background':'#1e1e1e',descriptionForeground:'#aaa','input-background':'#292929','input-foreground':'#eee','input-placeholderForeground':'#a6a6a6','input-border':'#555','button-background':'#0067b8','button-foreground':'#fff','button-hoverBackground':'#087bcc','textCodeBlock-background':'#252525','testing-iconPassed':'#89bc83','editorWarning-foreground':'#d5a34c',errorForeground:'#f48771',focusBorder:'#69a9e8'},
+  light:{foreground:'#333','editor-background':'#fff',descriptionForeground:'#666','input-background':'#fff','input-foreground':'#222','input-placeholderForeground':'#767676','input-border':'#aaa','button-background':'#0067b8','button-foreground':'#fff','button-hoverBackground':'#087bcc','textCodeBlock-background':'#f3f3f3','testing-iconPassed':'#38743a','editorWarning-foreground':'#855f00',errorForeground:'#a1260d',focusBorder:'#005fb8','widget-border':'#d4d4d4'},
+  contrast:{foreground:'#fff','editor-background':'#000',descriptionForeground:'#fff','input-background':'#000','input-foreground':'#fff','input-placeholderForeground':'#a6a6a6','input-border':'#fff','button-background':'#000','button-foreground':'#fff','button-hoverBackground':'#0f4a85','button-border':'#fff',contrastBorder:'#6fc3df','textCodeBlock-background':'#000','testing-iconPassed':'#89bc83','editorWarning-foreground':'#ffcc00',errorForeground:'#f48771',focusBorder:'#f38518','widget-border':'#6fc3df'},
+};
+const judgment={phase:'edit',prediction:'음수만 제외하고 다음 가격을 더한다.',evidence:''};
+const reviewed={...judgment,phase:'review',reviewedHash:'reviewed-buffer'};
+const done={...reviewed,phase:'done',decision:'keep',evidence:'[10, -5, 20] → 30 확인.'};
+const step={judgment,canKeep:true,title:'음수 가격을 합계에서 제외',file:'src/가격 계산.ts',line:3,before:'    result += price;',after:'    if (price >= 0) {\n      result += price;\n    }',reason:'0 이상의 가격만 합계에 포함하는지 조건을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:false};
+const longStep={...step,title:'이해하기 어려웠던 코드의 동작을 한 줄씩 살펴보며 변경합니다',file:'src/아주 긴 한글 경로/중첩된 구성 요소/가격계산과예외처리를확인하는파일이름.ts',after:'const 결과 = 상품목록.filter(상품 => 상품.price >= 0).map(상품 => ({ ...상품, 합계: 상품.price * 상품.quantity }));\nreturn 결과;',reason:'긴 경로와 코드는 화면 밖으로 밀려나지 않아야 합니다. 제안 코드는 가로로 이동해 끝까지 읽을 수 있습니다.'};
+const workspace={root:'/project/store',updatedAt:Date.now(),newChanges:true,worktrees:[{path:'/project/store',branch:'main',head:'abc123456789',current:true,changeCount:80,unsavedCount:1,conflictCount:1,overlap:2,groups:[{name:'services/',count:40},{name:'test/',count:30}],changes:[{path:'services/very-long-domain-handler.ts',status:' M',conflict:false}]},{path:'/tmp/store-feature',branch:'codex/a-long-branch-for-another-worktree-and-its-own-changes',head:'abc123456789',current:false,changeCount:4,overlap:2,changes:[{path:'services/very-long-domain-handler.ts',status:' M',conflict:false}]}]};
+const states={
+  empty:{},
+  worktrees:{workspace,connected:true},
+  'stale-learning':{...step,workspace,contextChanged:true,canKeep:false},
+  'learning-chat':{...step,workspace,surface:'chat',connected:true},
+  connecting:{busy:true,connecting:true,phase:'브라우저에서 연결 중'},
+  project:{project:'Storefront',connected:true},
+  'model-error':{connected:true,error:'모델 목록을 불러오지 못했어요.',errorAction:'chooseModel'},
+  connected:{connected:true,files:['src/가격 계산.ts','tests/가격 계산.test.ts'],model:'첫 번째 요청 전에 고르는 모델'},
+  busy:{busy:true,phase:'검색 중 · domain',project:'Storefront',connected:true,messages:[{role:'user',text:'해외 도메인은 어디서 추가해야 해?'},{role:'assistant',text:'도메인 설정을 확인하고 있습니다.',status:'streaming'}]},
+  answer:{project:'Storefront',connected:true,messages:[{role:'user',text:'해외 도메인은 어디서 추가해야 해?'},{role:'assistant',text:'**설정 두 곳을 확인하세요.**\n\n`src/domains.ts:8`에서 허용 도메인을, `src/routing.ts:24`에서 요청 분기를 관리합니다.\n\n설정을 변경하기 전에 인증 콜백 주소도 확인해 주세요.',status:'complete'}]},
+  stopped:{project:'Storefront',connected:true,messages:[{role:'assistant',text:'지금까지 찾은 설정은 `src/domains.ts`에 있습니다.',status:'stopped'}]},
+  error:{error:'연결할 수 없어요. 다시 시도해 주세요. 오류가 반복되면 연결 상태를 확인해 주세요.'},
+  quickstart:{...step,guidedStart:true,title:'완료한 할 일 숨기기',file:'tasks.js',line:4,before:'  return tasks;',after:'  return tasks.filter(task => !task.done);',reason:'완료하지 않은 할 일만 남깁니다.',total:1},
+  predict:{...step,judgment:{phase:'predict',prediction:'',evidence:''}},
+  review:{...step,judgment:reviewed},
+  rejected:{...step,judgment:{...done,decision:'reject'}},
+  deferred:{...step,judgment:{...done,decision:'defer',evidence:''}},
+  replan:{...step,replan:true,judgment:done},
+  'outside-review':{...step,status:'outside',canKeep:false,judgment:reviewed},
+  long:longStep,
+  proposal:longStep,
+  editing:{...step,status:'editing',message:''},
+  matched:{...step,status:'matched',canContinue:true,message:'제안과 일치'},
+  outside:{...longStep,status:'outside',message:'다른 부분도 바뀌었어요. 변경 내역을 확인하세요.'},
+  delete:{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
+  'delete-revealed':{...step,title:'디버그 출력 제거',before:'  console.log(result);',after:'',reason:'계산 중간값을 출력하던 디버그 코드를 제거합니다.',message:'',total:1},
+  complete:{...step,status:'matched',canContinue:true,complete:true,step:2,judgment:done},
+};
+for(const status of ['running','passed','failed','unknown','cancelled','stale','error'])states['check-'+status]={...step,judgment:status==='running'?judgment:reviewed,checking:status==='running',check:{task:'관련 모듈 검사',status,sourceHash:'hash',durationMs:1000,exitCode:status==='passed'?0:status==='failed'?1:undefined,details:status==='failed'?['가격.ts:5 예상 30, 실제 10']:[]}};
+const report={startedAt:new Date().toISOString(),mode:'Chromium headless with isolated browser context and mocked VS Code host',limits:['No native VS Code window or OS keyboard/IME was used.','Composition events verify the JavaScript guard, not real Korean input-method behavior.','No live account, provider request, or source-file edit was performed.','Representative theme tokens and accessibility checks are not a full WCAG or screen-reader certification.'],browser:'',matrix:[],interactionChecks:[],errors:[]};
+let browser,page;
+try{
+  browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXECUTABLE?{executablePath:process.env.CHROMIUM_EXECUTABLE}:{})});
+  report.browser=browser.version();
+  const context=await browser.newContext({viewport:{width:460,height:900},locale:'ko-KR',reducedMotion:'reduce',serviceWorkers:'block'});
+  // Everything is local setContent HTML. Accidental network access fails closed.
+  await context.route('**/*',route=>route.abort());
+  page=await context.newPage();
+  const accessibilitySession=await context.newCDPSession(page);
+  const runtimeErrors=[];
+  page.on('pageerror',error=>runtimeErrors.push(error.message));
+  page.on('console',message=>{if(message.type()==='error')runtimeErrors.push(message.text());});
+  const update=async state=>page.evaluate(state=>window.dispatchEvent(new MessageEvent('message',{data:state})),state);
+  const events=()=>page.evaluate(()=>window.__ttcHost.messages);
+  const lastCommand=async()=> (await events()).at(-1)?.command;
+  const fresh=async(mac=true,korean=true)=>{await page.goto('about:blank');await page.setContent(html(mac,korean));await page.waitForFunction(()=>window.__ttcHost?.messages.some(m=>m.command==='ready'));};
+  const assertState=async(name,state)=>{
+    const active=typeof state.file==='string'&&state.surface!=='chat';
+    assert.equal(await page.locator('#home').isVisible(),!active,`${name}: home`);
+    assert.equal(await page.locator('#guide').isVisible(),active,`${name}: guide`);
+    if(active){
+      const phase=state.judgment?.phase||'predict';
+      const revealed=phase!=='predict'&&await page.locator('#proposal').evaluate(e=>e.open);
+      assert.equal(await page.locator('#after').isVisible(),revealed&&state.after!=='',`${name}: proposed code`);
+      assert.equal(await page.locator('#delete-hint').isVisible(),revealed&&state.after==='',`${name}: deletion hint`);
+      assert.equal(await page.locator('#prediction-form').isVisible(),phase==='predict');
+      assert.equal(await page.locator('#reflection').isVisible(),phase==='review');
+      assert.equal(await page.locator('#review').isVisible(),phase==='done');
+      assert.equal(await page.locator('#edit').isVisible(),phase==='edit');
+      assert.equal(await page.locator('#next').isVisible(),phase==='edit');
+      assert.equal(await page.locator('#guide button:not(.quiet):not(.secondary):visible').count(),1,`${name}: one primary action`);
+      if(phase==='edit')assert.equal(await page.locator('#next').isEnabled(),!state.checking,'any proposal may be compared');
+      if(phase==='review')assert.equal(await page.locator('#keep').isDisabled(),true,'evidence is required');
+    }
+    if(state.error)assert.equal(await page.getByRole('alert').textContent(),state.error);
+  };
+
+  // Real rendering and accessibility-tree checks for every layout/state pair.
+  for(const language of ['ko','en'])for(const width of [300,460,720])for(const [theme,tokens]of Object.entries(themes)){
+    await page.setViewportSize({width,height:900});await fresh(true,language==='ko');
+    await page.evaluate(tokens=>{for(const [key,value]of Object.entries(tokens))document.documentElement.style.setProperty('--vscode-'+key,value);},tokens);
+    for(const [name,state]of Object.entries(states)){
+      await update(state);await page.locator('#workspace-details').evaluate((e,open)=>e.open=open,!!state.workspace);
+      await page.locator('#proposal').evaluate((e,reveal)=>e.open=reveal,['proposal','delete-revealed','quickstart'].includes(name));
+      await assertState(name,state);await page.evaluate(()=>window.scrollTo(0,0));
+      const metrics=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,buttons:[...document.querySelectorAll('button')].filter(b=>b.checkVisibility()).map(b=>({name:(b.getAttribute('aria-label')||b.textContent||'').trim(),left:b.getBoundingClientRect().left,right:b.getBoundingClientRect().right})),code:{width:document.querySelector('#after').clientWidth,scrollWidth:document.querySelector('#after').scrollWidth}}));
+      assert.ok(metrics.scrollWidth<=width+1,`${theme}/${width}/${name}: outer horizontal overflow ${metrics.scrollWidth}`);
+      for(const button of metrics.buttons){assert.ok(button.name,`${name}: unnamed visible button`);assert.ok(button.left>=-1&&button.right<=width+1,`${name}: button outside viewport: ${button.name}`);}
+      const accessibilityTree=await accessibilitySession.send('Accessibility.getFullAXTree');
+      const accessibleButtons=accessibilityTree.nodes.filter(node=>!node.ignored&&node.role?.value==='button');
+      for(const button of accessibleButtons)assert.ok(button.name?.value?.trim(),`${name}: unnamed button in Chromium accessibility tree`);
+      if(theme==='contrast'&&!state.file){
+        const border=await page.locator('#generate').evaluate(button=>({color:getComputedStyle(button).borderTopColor,width:getComputedStyle(button).borderTopWidth}));
+        assert.notEqual(border.color,'rgba(0, 0, 0, 0)');assert.notEqual(border.width,'0px');
+      }
+      const ax=await page.locator('body').ariaSnapshot();
+      const stem=`${language}-${width}-${theme}-${name}`;
+      await page.screenshot({path:path.join(output,stem+'.png'),fullPage:true});
+      await writeFile(path.join(output,stem+'.aria.txt'),ax);
+      report.matrix.push({language,width,theme,state:name,screenshot:stem+'.png',accessibility:stem+'.aria.txt',accessibleButtonCount:accessibleButtons.length,...metrics});
+    }
+  }
+
+  // Commands are captured locally. None of these mocked messages starts an
+  // account flow, VS Code command, network request, or source-file edit.
+  for(const mac of [true,false]){
+    await page.setViewportSize({width:460,height:900});await fresh(mac);await update({});
+    assert.equal(await page.locator('#generate').isEnabled(),false);
+    await page.getByRole('textbox',{name:'메시지'}).fill('  한글 요청: 음수 제외  ');
+    await page.keyboard.press((mac?'Meta':'Control')+'+Enter');
+    assert.deepEqual((await events()).at(-1),{command:'generate',intent:'한글 요청: 음수 제외'});
+    const beforeComposition=(await events()).length;
+    await page.evaluate(mac=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',metaKey:mac,ctrlKey:!mac,isComposing:true,cancelable:true})),mac);
+    assert.equal((await events()).length,beforeComposition,'IME composition Enter cannot submit');
+    await update({busy:true,phase:'생성 중'});
+    await page.evaluate(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,cancelable:true})));
+    assert.equal((await events()).length,beforeComposition,'IME composition Escape cannot cancel');
+    await page.keyboard.press('Escape');assert.equal(await lastCommand(),'stop');
+    await update({});await page.getByRole('textbox',{name:'메시지'}).fill('계속 질문');
+    await page.getByRole('textbox',{name:'메시지'}).focus();await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'model');
+    const focusStyle=await page.locator('#model').evaluate(button=>({width:getComputedStyle(button).outlineWidth,style:getComputedStyle(button).outlineStyle}));
+    assert.notEqual(focusStyle.width,'0px');assert.notEqual(focusStyle.style,'none');
+    await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'generate');
+    await page.locator('#chat-options summary').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#chat-options').evaluate(e=>e.open),true);
+    for(const command of ['chooseFiles','demo','import','loadPending','mcpConfig','signIn','tutorial','openFolder']){
+      await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);
+    }
+    await update({contextMode:'manual',files:['manual.ts']});await page.locator('#use-current').click();assert.equal(await lastCommand(),'useCurrentFile');
+    await update({connected:true});await page.getByRole('button',{name:'자동',exact:true}).click();assert.equal(await lastCommand(),'chooseModel');
+    for(const command of ['usage']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await page.locator('#move-view').click();assert.equal(await lastCommand(),'moveView');
+    await page.locator('#tutorial').click();await page.evaluate(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'showHelp'}})));await page.locator('[data-command=watchWalkthrough]').click();assert.equal(await lastCommand(),'watchWalkthrough');await page.locator('#close-help').click();
+    await update({...states.predict,surface:'chat'});await page.locator('#learning-tab').click();assert.equal(await lastCommand(),'showLearning');await update(states.predict);await page.locator('#conversation-tab').click();assert.equal(await lastCommand(),'showConversation');
+    await update(states.predict);await page.locator('#file').click();assert.equal(await lastCommand(),'focus');
+    assert.equal(await page.locator('#proposal').isVisible(),false,'predict before revealing the suggestion');
+    await page.locator('#prediction').fill('음수만 제외하면 합계는 30');await page.locator('#predict').click();
+    assert.deepEqual((await events()).at(-1),{command:'predict',prediction:'음수만 제외하면 합계는 30'});
+    await update(step);assert.equal(await page.locator('#after').isVisible(),true);
+    await page.locator('#edit').click();assert.equal(await lastCommand(),'focus');
+    const beforeIME=(await events()).length;
+    await page.evaluate(mac=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',metaKey:mac,ctrlKey:!mac,altKey:true,isComposing:true,cancelable:true})),mac);
+    assert.equal((await events()).length,beforeIME);
+    await page.keyboard.press((mac?'Meta':'Control')+'+Alt+Enter');assert.equal(await lastCommand(),'advance');
+    await page.locator('#original summary').click();
+    await update({...step,status:'editing'});assert.equal(await page.locator('#proposal').evaluate(e=>e.open),true);
+    assert.equal(await page.locator('#original').evaluate(e=>e.open),true);
+    await page.locator('#next').click();await update(states.review);
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'evidence');
+    assert.equal(await page.locator('#keep').isDisabled(),true);
+    assert.equal(await page.locator('#reject').isDisabled(),true);
+    await page.locator('#evidence').fill('테스트: 10 + 20 = 30');
+    assert.equal(await page.locator('#keep').isEnabled(),true);
+    await page.locator('#keep').click();assert.deepEqual((await events()).at(-1),{command:'decide',decision:'keep',evidence:'테스트: 10 + 20 = 30'});
+    await update(states.complete);assert.equal(await page.evaluate(()=>document.activeElement?.id),'review');
+    await page.locator('#review').click();assert.equal(await lastCommand(),'review');
+    await update(states['outside-review']);await page.locator('#evidence').fill('범위 밖의 변경 확인');
+    assert.equal(await page.locator('#keep').isDisabled(),true);
+    await page.locator('#reject').click();assert.equal((await events()).at(-1).decision,'reject');
+    await page.locator('#evidence').fill('');await page.locator('#defer').click();assert.deepEqual((await events()).at(-1),{command:'decide',decision:'defer',evidence:''});
+    await update(states.rejected);await page.locator('#again').click();assert.equal(await lastCommand(),'stop');await update({});
+    assert.equal(await page.evaluate(()=>document.activeElement?.id),'intent');
+    await update({error:'연결 오류'});assert.equal(await page.getByRole('alert').isVisible(),true);await update({});assert.equal(await page.getByRole('alert').isVisible(),false);
+    await update(states.review);await page.locator('#check-tools summary').click();
+    for(const command of ['runCheck','chooseCheck','problems','next']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await update({...step,checking:true,check:{task:'test',status:'running',sourceHash:'hash',durationMs:0,details:[]}});await page.locator('#cancel-check').click();assert.equal(await lastCommand(),'cancelCheck');
+    await update({connected:true,codexThread:'fixture-thread',proposal:'변경 지점'});
+    await page.locator('#chat-options').evaluate(e=>e.open=true);
+    for(const command of ['chooseLanguage','configureCodex','newChat','openCodexThread','openProposal']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
+    await update({connected:true,messages:[{role:'assistant',text:'관련 코드 설명',status:'complete'}]});await page.locator('[data-command="learnFromAnswer"]').click();assert.equal(await lastCommand(),'learnFromAnswer');
+    await update({workspace});await page.locator('#workspace-details').evaluate(e=>e.open=true);
+    for(const command of ['refreshWorkspace','viewChanges','explainChanges']){await page.locator('[data-command='+command+']').click();assert.equal(await lastCommand(),command);}
+    await page.locator('.worktree-card button').last().click();assert.equal(await lastCommand(),'openWorktree');assert.equal((await events()).at(-1).root,'/tmp/store-feature');
+    await update({...step,contextChanged:true});await page.locator('[data-command=refreshLearning]').click();assert.equal(await lastCommand(),'refreshLearning');
+    assert.deepEqual([...new Set((await events()).map(event=>event.command).filter(command=>command!=='ready'))].sort(),[...PANEL_COMMANDS].sort(),'every production command was exercised');
+    report.interactionChecks.push({platform:mac?'mac-shortcuts':'windows-linux-shortcuts',passed:['empty request','trimmed submit','busy cancellation','synthetic IME submit/cancel/next guard','Tab order and visible focus','disclosure keyboard opening','all home commands','first-request model','account commands','proposal hidden until requested','edit action','compare without automatic acceptance','prediction before reveal','evidence-gated keep/reject','defer without evidence','out-of-range keep disabled','proposal and before disclosure persistence','completion focus','outside-review recovery','end-session focus','error recovery']});
+  }
+  // Long code must remain accessible via keyboard scrolling at the narrowest width.
+  await page.setViewportSize({width:300,height:900});await fresh();await update(longStep);
+  await page.locator('#proposal summary').first().click();
+  await page.locator('#after').focus();assert.equal(await page.evaluate(()=>document.activeElement?.id),'after','overflowing proposal code is focusable');
+  await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.querySelector('#after').scrollLeft>0);
+  report.interactionChecks.push({passed:['keyboard horizontal scrolling of long code']});
+  assert.deepEqual(runtimeErrors,[],'no JavaScript or CSP console errors');
+  report.passed=true;
+}catch(error){
+  report.passed=false;report.errors.push(error instanceof Error?error.stack:String(error));process.exitCode=1;
+  if(page&&!page.isClosed())await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});
+}
+finally{
+  if(browser)await browser.close();report.finishedAt=new Date().toISOString();
+  await writeFile(path.join(output,'report.json'),JSON.stringify(report,null,2)+'\n');
+  console.log(JSON.stringify({passed:report.passed,matrixCases:report.matrix.length,interactionGroups:report.interactionChecks.length,report:path.join(output,'report.json'),errors:report.errors},null,2));
+}

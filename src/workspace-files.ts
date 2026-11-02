@@ -2,14 +2,14 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { validateRelativePath } from './plan.js';
+import { MAX_SOURCE_BYTES, validateRelativePath } from './plan.js';
 
-export const MAX_SOURCE_BYTES = 64 * 1024;
+export { MAX_SOURCE_BYTES } from './plan.js';
 export const MAX_BRIDGE_BYTES = 256 * 1024;
-export type BridgeName = 'plan.json' | 'status.json';
+export type BridgeName = 'plan.json' | 'status.json' | 'review.json';
 
 export class WorkspaceFileError extends Error {
-  constructor(readonly code: 'unsafe_path' | 'missing_file' | 'not_regular_file' | 'too_large' | 'invalid_text' | 'unavailable') {
+  constructor(readonly code: 'unsafe_path' | 'missing_file' | 'not_regular_file' | 'too_large' | 'invalid_text' | 'duplicate_file' | 'unavailable') {
     super(code);
     this.name = 'WorkspaceFileError';
   }
@@ -85,7 +85,7 @@ async function readBoundedFile(root: string, file: string, limit: number): Promi
   } finally { await handle.close(); }
 }
 
-export async function readWorkspaceFile(root: string, file: string): Promise<string> {
+export async function readWorkspaceFile(root: string, file: string, limit = MAX_SOURCE_BYTES): Promise<string> {
   try {
     try { validateRelativePath(file); } catch { throw new WorkspaceFileError('unsafe_path'); }
     if (file.split('/').some(part => ['.type-the-change', '.codex', '.aws', '.ssh', '.gnupg', 'node_modules'].includes(part.toLowerCase()))) {
@@ -93,12 +93,31 @@ export async function readWorkspaceFile(root: string, file: string): Promise<str
     }
     const resolved = await workspaceRoot(root);
     const target = await checkedPath(resolved, file.split('/'));
-    return await readBoundedFile(resolved, target, MAX_SOURCE_BYTES);
+    return await readBoundedFile(resolved, target, Math.min(Math.max(limit, 1), 1024 * 1024));
+  } catch (error) { throw normalizeError(error); }
+}
+
+/** Distinct plan keys must not describe conflicting states of one physical file. */
+export async function assertDistinctWorkspaceFiles(root: string, files: Iterable<string>): Promise<void> {
+  try {
+    const resolved = await workspaceRoot(root);
+    const identities = new Set<string>();
+    for (const file of new Set(files)) {
+      try { validateRelativePath(file); } catch { throw new WorkspaceFileError('unsafe_path'); }
+      const target = await checkedPath(resolved, file.split('/'));
+      const item = await lstat(target);
+      if (!item.isFile()) throw new WorkspaceFileError('not_regular_file');
+      // Some virtual filesystems do not supply inode numbers. Canonical paths
+      // still catch case aliases there; normal local files also catch hard links.
+      const identity = item.ino ? `${item.dev}:${item.ino}` : await realpath(target);
+      if (identities.has(identity)) throw new WorkspaceFileError('duplicate_file');
+      identities.add(identity);
+    }
   } catch (error) { throw normalizeError(error); }
 }
 
 function checkBridgeName(name: string): asserts name is BridgeName {
-  if (name !== 'plan.json' && name !== 'status.json') throw new WorkspaceFileError('unsafe_path');
+  if (name !== 'plan.json' && name !== 'status.json' && name !== 'review.json') throw new WorkspaceFileError('unsafe_path');
 }
 
 export async function readBridgeFile(root: string, name: BridgeName): Promise<unknown | undefined> {

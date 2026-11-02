@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "version": "0.7.1",
+  "publisher": "CodeNyangi",
+  "name": "type-the-change",
+  "sourceCommit": "2f26ab532c7ed7fe538f08b1f4b8beebdcbb6cd6",
+  "sourceTree": "18f19c349fccf0b1f820a15e4c37ed6efd980f39",
+  "mediaRevision": "004b5b6d1af681491976a1e69880f7d427f9576f",
+  "sha256": "0dfe40863d67ea6abe9c572c878dede8ad87f8cc29bb0de5f66a6f4d7e97e2d2",
+  "bytes": 277808,
+  "bundles": {
+    "extension.cjs": "0efe222f4aabe4801e441e96a412b7bd3d3fe50860b7963b214e91235ce9e450",
+    "mcp-server.cjs": "974e58841b4102199ba45e3916336a5aacdacae14142a4d0de92253a46bd42a7",
+    "codex-hook.cjs": "cf35024b19b42fce6c35625e8019cadda48a328247956cb402301666466b5dd1"
+  },
+  "checks": {
+    "commands": [
+      "check",
+      "test",
+      "build",
+      "test:host",
+      "test:ui:companion",
+      "test:editor"
+    ],
+    "checkedAt": "2026-11-02T07:46:41.758Z",
+    "fileCount": 29,
+    "bundlesMatch": true,
+    "selfContainedGuide": true,
+    "privateEvidenceExcluded": true
+  },
+  "publishedAt": "2026-11-02T07:54:51.547Z",
+  "verifiedAt": "2026-11-02T07:55:11.360Z",
+  "url": "https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change"
+}

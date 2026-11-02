@@ -1,4 +1,6 @@
-# 0.2.0 verification
+# 0.2.0 release verification (historical)
+
+For the subsequent local audit, fixes, browser evidence and remaining live-account/native-input limits, see [2026-11-01 audit](audit-2026-11-01.md). The results below describe the original published release, not the later audit build.
 
 This report distinguishes simulated UI events, actual VS Code integration, and checks that require an accessible screen or a real account. Passing a DOM test does not mean pixels were visually inspected.
 

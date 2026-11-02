@@ -1,0 +1,37 @@
+# Adapted from openai/codex at
+# 67f0994b532b8740f14b5b738af7b7b2a915b1d6: 5-feature-request.yml.
+name: Feature request / 기능·사용성 제안
+description: Suggest a feature or an improvement to the experience. / 기능이나 사용 경험의 개선을 제안해 주세요.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Korean are welcome. 한국어로 편하게 작성해 주세요.
+        Check for an existing proposal before opening a new one. A real situation and the change you want are enough; an implementation plan is not required.
+        먼저 비슷한 제안을 찾아보세요. 겪은 상황과 원하는 변화만으로 충분하며, 구현 방법을 준비할 필요는 없습니다.
+        Maintainers decide which requests fit the project. Community contributions are made through issues; external pull requests are not accepted. See [CONTRIBUTING.md](https://github.com/CodeNyangi/type-the-change/blob/main/CONTRIBUTING.md).
+        요청의 반영 여부는 관리자가 결정합니다. 커뮤니티 참여는 이슈로 받으며, 외부 Pull Request는 받지 않습니다.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part would change? / 어떤 부분의 변화인가요?
+      options:
+        - VS Code workflow or usability / VS Code 흐름·사용성
+        - ChatGPT connection or generation / ChatGPT 연결·생성
+        - MCP integration / MCP 연동
+        - Something else / 기타
+    validations:
+      required: true
+  - type: textarea
+    id: feature
+    attributes:
+      label: What would you like to improve? / 무엇이 나아지면 좋을까요?
+      description: Describe the situation, limitation, and desired behavior. Usability feedback belongs here too. / 겪은 상황과 불편함, 원하는 동작을 적어 주세요. 사용 경험에 대한 의견도 이곳에 남겨 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context / 추가 정보
+      description: Optional. Examples, current workarounds, alternatives, or tradeoffs. / 예시, 현재 쓰는 방법, 다른 접근이나 고려할 점을 자유롭게 적어 주세요.

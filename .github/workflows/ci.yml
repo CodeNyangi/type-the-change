@@ -1,23 +1,134 @@
 name: Check extension
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
+    name: check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run release:check
       - run: npm run check
       - run: npm test
       - run: npm run build
       - run: xvfb-run -a npm run test:host
       - run: npm run package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: type-the-change-vsix
           path: artifacts/*.vsix
+
+  ui:
+    name: Background UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install headless browser
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Verify webview layouts and keyboard interactions
+        run: npm run test:ui:webview
+      - name: Verify Codex companion layouts
+        run: npm run test:ui:companion
+      - name: Verify native staged and unstaged editor comparisons
+        run: xvfb-run -a npm run test:editor
+      - name: Exercise real VS Code UI in a virtual display
+        run: xvfb-run -a -s '-screen 0 1440x1000x24' npm run test:ui:vscode
+      - name: Install tutorial recorder and Korean fonts
+        run: sudo apt-get update -qq && sudo apt-get install -y ffmpeg fonts-noto-cjk
+      - name: Film the actual judgment workflow
+        run: xvfb-run -a -s '-screen 0 1440x1000x24' node scripts/record-tutorial.mjs
+      - name: Save UI evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: background-ui-evidence
+          path: |
+            artifacts/vscode-ui/
+            artifacts/headless-webview/
+            artifacts/tutorial/
+            artifacts/lesson-ui/
+            artifacts/real-companion/editor-follow.json
+
+  minimum:
+    name: Minimum VS Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TTC_VSCODE_VERSION: minimum
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: xvfb-run -a npm run test:host
+
+  windows:
+    name: Windows core
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      TTC_LOCK_STRESS_REPEATS: '20'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run release:check
+      - run: npm run check
+      - run: npm test
+
+  required:
+    name: CI required
+    # Report a failure even when a dependency fails, is cancelled, or is skipped.
+    if: ${{ always() }}
+    needs: [check, ui, minimum, windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Test required CI gate
+        run: node --test .github/scripts/check-ci-results.test.mjs
+      - name: Require successful dependencies
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node .github/scripts/check-ci-results.mjs check ui minimum windows

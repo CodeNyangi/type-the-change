@@ -1,13 +1,13 @@
 {
   "name": "type-the-change",
   "displayName": "Type the Change",
-  "description": "Let AI point out the change. Type it yourself, in your own code.",
-  "version": "0.2.0",
+  "description": "%description%",
+  "version": "0.8.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
   "engines": {
-    "vscode": "^1.100.0",
+    "vscode": "^1.106.0",
     "node": ">=22"
   },
   "categories": [
@@ -15,11 +15,11 @@
     "Other"
   ],
   "keywords": [
-    "learning",
-    "typing",
-    "code review",
-    "mcp",
-    "chatgpt"
+    "codex",
+    "code-learning",
+    "code-review",
+    "worktrees",
+    "deliberate-practice"
   ],
   "repository": {
     "type": "git",
@@ -39,79 +39,123 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "Reads selected source files and prepares local typing guidance."
+      "description": "%capability.untrustedWorkspaces%"
     },
     "virtualWorkspaces": {
       "supported": false,
-      "description": "This preview uses local files and a loopback sign-in callback."
+      "description": "%capability.virtualWorkspaces%"
     }
   },
   "contributes": {
     "commands": [
       {
         "command": "typeTheChange.start",
-        "title": "Type the Change: Start"
-      },
-      {
-        "command": "typeTheChange.generate",
-        "title": "Type the Change: Plan a Change with ChatGPT"
-      },
-      {
-        "command": "typeTheChange.signIn",
-        "title": "Type the Change: Continue with ChatGPT"
-      },
-      {
-        "command": "typeTheChange.signOut",
-        "title": "Type the Change: Sign Out"
+        "title": "%command.start%",
+        "shortTitle": "Type the Change",
+        "icon": {
+          "light": "assets/toolbar-light.svg",
+          "dark": "assets/toolbar-dark.svg"
+        }
       },
       {
         "command": "typeTheChange.import",
-        "title": "Type the Change: Open a Plan"
+        "title": "%command.import%"
       },
       {
         "command": "typeTheChange.loadPending",
-        "title": "Type the Change: Open MCP Plan"
+        "title": "%command.loadPending%"
       },
       {
         "command": "typeTheChange.next",
-        "title": "Type the Change: Review and Continue"
+        "title": "%command.next%"
+      },
+      {
+        "command": "typeTheChange.advance",
+        "title": "%command.advance%"
+      },
+      {
+        "command": "typeTheChange.runCheck",
+        "title": "%command.runCheck%"
+      },
+      {
+        "command": "typeTheChange.chooseCheck",
+        "title": "%command.chooseCheck%"
       },
       {
         "command": "typeTheChange.focus",
-        "title": "Type the Change: Go to Change"
+        "title": "%command.focus%"
       },
       {
         "command": "typeTheChange.stop",
-        "title": "Type the Change: End Session"
+        "title": "%command.stop%"
       },
       {
         "command": "typeTheChange.demo",
-        "title": "Type the Change: Try the Demo"
+        "title": "%command.demo%"
+      },
+      {
+        "command": "typeTheChange.tutorial",
+        "title": "%command.tutorial%"
       },
       {
         "command": "typeTheChange.mcpConfig",
-        "title": "Type the Change: Show MCP Connection"
-      },
-      {
-        "command": "typeTheChange.chooseFiles",
-        "title": "Type the Change: Select Files"
-      },
-      {
-        "command": "typeTheChange.chooseModel",
-        "title": "Type the Change: Select Model"
-      },
-      {
-        "command": "typeTheChange.usage",
-        "title": "Type the Change: ChatGPT Usage"
+        "title": "%command.mcpConfig%"
       },
       {
         "command": "typeTheChange.review",
-        "title": "Type the Change: Review Changes"
+        "title": "%command.review%"
+      },
+      {
+        "command": "typeTheChange.openFolder",
+        "title": "%command.openFolder%"
+      },
+      {
+        "command": "typeTheChange.chooseLanguage",
+        "title": "%command.chooseLanguage%"
+      },
+      {
+        "command": "typeTheChange.moveView",
+        "title": "%command.moveView%",
+        "icon": "$(layout-sidebar-right)"
+      },
+      {
+        "command": "typeTheChange.refreshChats",
+        "title": "%command.refreshChats%"
+      },
+      {
+        "command": "typeTheChange.setupLive",
+        "title": "%command.setupLive%"
+      },
+      {
+        "command": "typeTheChange.openCodexThread",
+        "title": "%command.openCodexThread%"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "typeTheChange.start",
+          "when": "resourceScheme == file",
+          "group": "navigation@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "typeTheChange.moveView",
+          "when": "view == typeTheChange.launcher",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "keybindings": [
       {
-        "command": "typeTheChange.next",
+        "command": "typeTheChange.start",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "!typeTheChange.active"
+      },
+      {
+        "command": "typeTheChange.advance",
         "key": "ctrl+alt+enter",
         "mac": "cmd+alt+enter",
         "when": "typeTheChange.active"
@@ -122,20 +166,97 @@
         "mac": "cmd+alt+t",
         "when": "typeTheChange.active"
       }
-    ]
+    ],
+    "problemMatchers": [
+      {
+        "name": "type-the-change",
+        "owner": "type-the-change-demo",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (error|warning) (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    ],
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "typeTheChange",
+          "title": "Type the Change",
+          "icon": "assets/toolbar-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "typeTheChange": [
+        {
+          "id": "typeTheChange.launcher",
+          "name": "Type the Change",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Type the Change",
+      "properties": {
+        "typeTheChange.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ko",
+            "en"
+          ],
+          "enumDescriptions": [
+            "%language.auto%",
+            "한국어",
+            "English"
+          ],
+          "default": "auto",
+          "description": "%language.description%"
+        },
+        "typeTheChange.codexPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%codexPath.description%"
+        },
+        "typeTheChange.codexSocket": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%codexSocket.description%"
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts test/*.test.mjs",
     "test:host": "node scripts/test-host.mjs",
-    "package": "npm run build && vsce package --no-dependencies --out artifacts/type-the-change-0.2.0.vsix",
+    "test:ui:vscode": "node scripts/test-vscode-ui.mjs",
+    "test:ui:webview": "node --import tsx scripts/test-webview-headless.mjs",
+    "package": "npm run build && node scripts/package.mjs",
     "vscode:prepublish": "npm run build",
-    "preview": "node --import tsx scripts/preview.ts"
+    "preview": "node --import tsx scripts/preview.ts",
+    "test:ui:companion": "node --import tsx scripts/test-companion-webview.mjs",
+    "test:editor": "node scripts/test-editor-follow-host.mjs",
+    "release:check": "node scripts/release.mjs check",
+    "release:verify": "node scripts/release.mjs verify",
+    "release:record": "node scripts/release.mjs record",
+    "package:marketplace": "node scripts/package.mjs --marketplace"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "11.0.1"
+    }
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "jose": "6.2.14",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -147,7 +268,15 @@
     "@vscode/vsce": "4.1.0",
     "esbuild": "0.28.2",
     "jsdom": "^29.1.1",
+    "playwright": "1.64.1",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "yauzl": "3.4.0"
+  },
+  "icon": "assets/icon.png",
+  "preview": true,
+  "galleryBanner": {
+    "color": "#f5f2e9",
+    "theme": "light"
   }
 }

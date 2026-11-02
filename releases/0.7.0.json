@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "version": "0.7.0",
+  "publisher": "CodeNyangi",
+  "name": "type-the-change",
+  "sourceCommit": null,
+  "sourceBase": "004b5b6d1af681491976a1e69880f7d427f9576f",
+  "sourceState": "working copy preserved in sourceSnapshot after packaging; tested and installed bundle hashes matched",
+  "sha256": "779fa36109c05db9b251430504a54dae2474f9681af9f3873b24208140663352",
+  "bytes": 279679,
+  "publishedAt": "2026-11-02T07:26:14.703Z",
+  "verifiedAt": "2026-11-02T07:38:45.015765+00:00",
+  "url": "https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change",
+  "sourceSnapshot": "8149845ed9f60c97a6b8c29eb9f508252170b085"
+}

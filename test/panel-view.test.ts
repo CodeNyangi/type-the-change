@@ -1,14 +1,16 @@
-import test from 'node:test';
+import test, {afterEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM,VirtualConsole} from 'jsdom';
 import {panelHtml,PANEL_COMMANDS,type PanelState} from '../src/panel-view.js';
 
-function view(mac=true,draft=''){
+const openViews:JSDOM[]=[];afterEach(()=>{for(const dom of openViews.splice(0))dom.window.close();});
+function view(mac=true,draft:string|Record<string,unknown>='',korean=true){
   const messages:any[]=[],errors:unknown[]=[],saved:any[]=[];
   const console=new VirtualConsole();console.on('jsdomError',e=>errors.push(e));
-  const dom=new JSDOM(panelHtml('test-nonce',mac),{runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:console,beforeParse(w){
-    (w as any).acquireVsCodeApi=()=>({postMessage:(m:any)=>messages.push(JSON.parse(JSON.stringify(m))),getState:()=>({intent:draft}),setState:(s:any)=>saved.push(s)});
+  const dom=new JSDOM(panelHtml('test-nonce',mac,korean),{runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:console,beforeParse(w){
+    (w as any).acquireVsCodeApi=()=>({postMessage:(m:any)=>messages.push(JSON.parse(JSON.stringify(m))),getState:()=>typeof draft==='string'?{intent:draft}:draft,setState:(s:any)=>saved.push(s)});
   }});
+  openViews.push(dom);
   const window=dom.window,document=window.document;
   function get<T extends HTMLElement=HTMLElement>(id:string){const e=document.getElementById(id);assert.ok(e,id);return e as T;}
   function update(state:PanelState){window.dispatchEvent(new window.MessageEvent('message',{data:state}));}
@@ -17,7 +19,17 @@ function view(mac=true,draft=''){
   function close(){assert.deepEqual(errors,[]);dom.window.close();}
   return {dom,window,document,get,update,click,type,messages,saved,close};
 }
-const step:PanelState={title:'값 변경',file:'price.ts',line:3,before:'old();',after:'new();',reason:'반환값을 확인합니다.',step:1,total:2,status:'untouched',message:'',canContinue:false};
+const step:PanelState={title:'값 변경',file:'price.ts',line:3,before:'old();',after:'new();',reason:'반환값을 확인합니다.',step:1,total:2,status:'untouched',message:'선택된 코드를 직접 바꿔 보세요.',canContinue:true,canKeep:true,judgment:{phase:'edit',prediction:'반환값이 달라진다',evidence:''}};
+
+test('moving the view restores notes only for the same learning step and reviewed source',()=>{
+ const review={...step,judgment:{phase:'review' as const,prediction:'30',evidence:'',reviewedHash:'review-a'}};
+ const first=view();first.update(review);first.get<HTMLTextAreaElement>('evidence').value='검사 결과를 비교하는 중';first.get('evidence').dispatchEvent(new first.window.Event('input'));first.type('이 부분도 설명해 줘');
+ const saved=first.saved.at(-1);first.close();
+ const moved=view(true,saved);moved.update(review);
+ assert.equal(moved.get<HTMLTextAreaElement>('intent').value,'이 부분도 설명해 줘');assert.equal(moved.get<HTMLTextAreaElement>('evidence').value,'검사 결과를 비교하는 중');moved.close();
+ const changed=view(true,saved);changed.update({...review,judgment:{...review.judgment,reviewedHash:'review-b'}});
+ assert.equal(changed.get<HTMLTextAreaElement>('evidence').value,'','stale evidence cannot be restored after code changes');changed.close();
+});
 
 test('start has one inline request, saved draft, and no model/login modal',()=>{
  const v=view(true,'이전 요청');assert.deepEqual(v.messages,[{command:'ready'}]);assert.equal(v.get<HTMLTextAreaElement>('intent').value,'이전 요청');
@@ -37,58 +49,208 @@ test('request shortcut submits trimmed intent once and busy state blocks duplica
  assert.equal(v.get<HTMLButtonElement>('files').disabled,true);v.click('stop');assert.equal(v.messages.at(-1).command,'stop');
  v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(v.messages.at(-1).command,'stop');v.close();
 });
+test('IME composition does not submit, advance, or cancel a request',()=>{
+ const v=view();v.type('한글 요청');const count=v.messages.length;
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,isComposing:true,cancelable:true}));
+ assert.equal(v.messages.length,count,'composition confirmation must not submit partial Korean text');
+ v.update({...step,canContinue:true});
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,isComposing:true,cancelable:true}));
+ assert.equal(v.messages.length,count,'composition confirmation must not accept a step');
+ v.update({busy:true});
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Escape',isComposing:true,cancelable:true}));
+ assert.equal(v.messages.length,count,'cancelling composition must not cancel the model request');v.close();
+});
 test('all home action buttons route to distinct allowlisted commands',()=>{
  const v=view();v.update({files:['a.ts','한글.ts'],model:'모델 A'});
  for(const command of ['chooseFiles','chooseModel','demo','import','loadPending','mcpConfig','signIn']){v.click(command);assert.equal(v.messages.at(-1).command,command);assert.ok(PANEL_COMMANDS.has(command));}
- assert.equal(v.get('files').textContent,'a.ts, 한글.ts');assert.equal(v.get('files').title,'a.ts\n한글.ts');
+ assert.equal(v.get('files').textContent,'파일 참고 자료 추가 (2)');assert.equal(v.get('files').title,'a.ts\n한글.ts');
+ v.update({files:['src/한글.ts']});assert.equal(v.get('files').textContent,'파일 참고 자료 추가 (1)');assert.equal(v.get('files').title,'src/한글.ts');
+ v.update({files:[]});assert.equal(v.get('files').textContent,'파일 참고 자료 추가');assert.equal(v.get('files').title,'');
  v.update({connected:true});assert.equal(v.get('connect').hidden,true);
- for(const command of ['usage','signOut']){v.click(command);assert.equal(v.messages.at(-1).command,command);}
+ for(const command of ['usage']){v.click(command);assert.equal(v.messages.at(-1).command,command);}
  v.close();
 });
-test('typing, matching, continuation, completion and next request stay in one guide',()=>{
- const v=view();v.update(step);assert.equal(v.get('guide').hidden,false);assert.equal(v.get('home').hidden,true);assert.equal(v.get('after').textContent,'new();');
- assert.equal(v.get<HTMLButtonElement>('next').disabled,true);const count=v.messages.length;v.click('next');assert.equal(v.messages.length,count);
- v.update({...step,status:'matched',message:'제안과 일치',canContinue:true});v.click('next');assert.equal(v.messages.at(-1).command,'next');
- v.update({...step,step:2});assert.equal(v.get('next-label').textContent,'완료');
- v.update({...step,step:2,complete:true,canContinue:true});assert.equal(v.get('next').hidden,true);assert.equal(v.get('review').hidden,false);assert.equal(v.get('guide').hidden,false);
- v.click('review');assert.equal(v.messages.at(-1).command,'review');v.click('stop');assert.equal(v.messages.at(-1).command,'stop');
- v.update({});assert.equal(v.get('home').hidden,false);v.close();
+test('a newly connected account can choose its model before the first request',()=>{
+ const v=view();v.update({connected:true});
+ assert.equal(v.get('model').hidden,false);assert.equal(v.get('model').textContent,'자동');
+ v.click('chooseModel');assert.equal(v.messages.at(-1).command,'chooseModel');
+ v.update({connected:true,model:'모델 A'});assert.equal(v.get('model').textContent,'모델 A');
+ v.update({connected:false});assert.equal(v.get('model').hidden,false);v.close();
 });
-test('deletion has an explicit visual instruction on first open and reopening',()=>{
- const v=view();v.update({...step,after:''});assert.equal(v.get('after').hidden,true);assert.equal(v.get('delete-hint').hidden,false);assert.match(v.get('delete-hint').textContent||'',/지우세요/);
- v.update({});v.update({...step,after:''});assert.equal(v.get('delete-hint').hidden,false);v.close();
+test('prediction comes before revealing a proposal and requires one short note',()=>{
+ const v=view();v.update({...step,judgment:{phase:'predict',prediction:'',evidence:''}});
+ assert.equal(v.get('prediction-form').hidden,false);assert.equal(v.get('proposal').hidden,true);assert.equal(v.get<HTMLButtonElement>('predict').disabled,true);
+ v.get<HTMLTextAreaElement>('prediction').value='  결과 30  ';v.get('prediction').dispatchEvent(new v.window.Event('input'));
+ v.get('prediction-form').dispatchEvent(new v.window.Event('submit',{cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'predict',prediction:'결과 30'});v.close();
 });
-test('outside changes disable advancement and completion can be invalidated',()=>{
- const v=view();v.update({...step,complete:true,canContinue:true});
- v.update({...step,status:'outside',message:'다른 부분도 바뀌었어요.',canContinue:false,complete:false});
- assert.equal(v.get('review').hidden,true);assert.equal(v.get('next').hidden,false);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('status').dataset.state,'outside');v.close();
+test('a match enables comparison, never automatic acceptance',()=>{
+ const v=view();v.update({...step,status:'matched'});assert.equal(v.get('next').hidden,false);assert.equal(v.get('reflection').hidden,true);assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);
+ v.get('next').click();assert.deepEqual(v.messages.at(-1),{command:'advance'});assert.equal(v.messages.some(m=>m.command==='decide'),false);v.close();
 });
-test('location and shortcut route correctly without a duplicate location button',()=>{
- const v=view();v.update({...step,canContinue:true});v.click('focus');assert.equal(v.messages.at(-1).command,'focus');
- assert.equal(v.document.querySelectorAll('[data-command="focus"]').length,1);
- v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'next');
- v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);assert.doesNotMatch(windows.get('next').textContent||'',/⌘/);windows.close();
+test('human decisions carry evidence and accept alternatives independently of equality',()=>{
+ const v=view();v.update({...step,status:'editing',judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'one'}});
+ assert.equal(v.get('reflection').hidden,false);assert.equal(v.get<HTMLButtonElement>('keep').disabled,true);assert.equal(v.get<HTMLButtonElement>('reject').disabled,true);
+ v.get('defer').click();assert.deepEqual(v.messages.at(-1),{command:'decide',decision:'defer',evidence:''});
+ v.get<HTMLTextAreaElement>('evidence').value='  다른 구현도 두 입력에서 30  ';v.get('evidence').dispatchEvent(new v.window.Event('input'));
+ for(const decision of ['keep','reject']){v.get(decision).click();assert.deepEqual(v.messages.at(-1),{command:'decide',decision,evidence:'다른 구현도 두 입력에서 30'});}
+ v.update({...step,canKeep:false,status:'outside',judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'two'}});
+ assert.equal(v.get<HTMLTextAreaElement>('evidence').value,'','a different reviewed snapshot clears old evidence');assert.equal(v.get<HTMLButtonElement>('keep').disabled,true);v.close();
 });
-test('before-code disclosure persists during typing and resets for a new step',()=>{
- const v=view();v.update(step);v.get<HTMLDetailsElement>('original').open=true;
- v.update({...step,status:'editing'});assert.equal(v.get<HTMLDetailsElement>('original').open,true);
- v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('original').open,false);v.close();
+test('complete, rejected and deferred outcomes remain visibly distinct',()=>{
+ const v=view();for(const [decision,label] of [['keep','내 변경 유지'],['reject','제안 거절'],['defer','보류']] as const){
+ v.update({...step,complete:decision==='keep',judgment:{phase:'done',prediction:'30',evidence:'확인한 입력',decision}});
+ assert.match(v.get('status').textContent||'',new RegExp(label));assert.equal(v.get('review').hidden,false);assert.equal(v.get('again').hidden,false);assert.equal(v.get('record').hidden,false);
+ }v.close();
 });
-test('untrusted code, intent, filenames and errors are rendered as text',()=>{
- const v=view();const hostile='<img src=x onerror="window.hacked=true">';v.update({...step,title:hostile,file:hostile,after:hostile,reason:hostile,error:hostile,notice:hostile});
- assert.equal(v.document.querySelectorAll('img').length,0);assert.equal(v.get('after').textContent,hostile);assert.equal(v.get('error').textContent,hostile);assert.equal((v.window as any).hacked,undefined);v.close();
+test('deletion remains explicit when the optional proposal is opened',()=>{
+ const v=view();v.update({...step,after:''});assert.equal(v.get('after').hidden,true);assert.equal(v.get('delete-hint').hidden,false);assert.match(v.get('delete-hint').textContent||'',/지우세요/);v.close();
 });
-test('completion and ending move webview focus to a visible control',()=>{
- const v=view();v.update({...step,canContinue:true});v.get('next').focus();assert.equal(v.document.hasFocus(),true);
- v.update({...step,complete:true,canContinue:true});assert.equal(v.document.activeElement?.id,'review');
+test('proposal disclosure persists while typing and resets on the next step or session',()=>{
+ const v=view();v.update(step);v.get<HTMLDetailsElement>('proposal').open=true;v.get<HTMLDetailsElement>('original').open=true;
+ v.update({...step,status:'editing'});assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);assert.equal(v.get<HTMLDetailsElement>('original').open,true);
+ v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);assert.equal(v.get<HTMLDetailsElement>('original').open,false);
+ v.get<HTMLDetailsElement>('proposal').open=true;v.update({});v.update({...step,step:2});assert.equal(v.get<HTMLDetailsElement>('proposal').open,false);v.close();
+});
+test('comparison shortcut works for alternative text and cannot submit a judgment',()=>{
+ const v=view();v.update({...step,status:'editing'});v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.at(-1).command,'advance');
+ v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'proof'}});const count=v.messages.length;
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count+1);assert.equal(v.messages.at(-1).command,'advance');assert.equal(v.messages.some(message=>message.command==='decide'),false);
+ v.close();const windows=view(false);assert.match(windows.get('next').textContent||'',/Ctrl Alt/);windows.close();
+});
+test('phase changes keep keyboard focus on visible controls',()=>{
+ const v=view();v.update(step);v.get('next').focus();
+ v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'a'}});assert.equal(v.document.activeElement?.id,'evidence');
+ v.get('defer').focus();v.update({...step,judgment:{phase:'done',prediction:'30',evidence:'',decision:'defer'}});assert.equal(v.document.activeElement?.id,'review');
  v.update({});assert.equal(v.document.activeElement?.id,'intent');v.close();
 });
-test('error, recovery, connection and empty fields have no stale text',()=>{
- const v=view();v.update({error:'연결 오류',notice:'첫 연결',connected:true});assert.equal(v.get('error').hidden,false);assert.equal(v.get('notice').hidden,false);
- v.update({});assert.equal(v.get('error').hidden,true);assert.equal(v.get('notice').hidden,true);assert.equal(v.get('connect').hidden,false);assert.equal(v.get('account-options').hidden,true);v.close();
+test('one primary action per phase keeps the next action clear',()=>{
+ const v=view();for(const [phase,id] of [['predict','predict'],['edit','next'],['review','keep'],['done','review']] as const){
+ v.update({...step,judgment:{phase,prediction:'30',evidence:'proof',decision:phase==='done'?'keep':undefined}});
+ const actions=[...v.get('guide').querySelectorAll<HTMLButtonElement>('button')].filter(b=>!b.closest('[hidden]')&&!b.classList.contains('quiet')&&!b.classList.contains('secondary'));
+ assert.deepEqual(actions.map(b=>b.id),[id]);}v.close();
 });
-test('every rendered command has a host allowlist entry and every button has an accessible name',()=>{
+test('new steps do not leave focus inside a collapsed proposal',()=>{
+ const v=view();v.update(step);v.get<HTMLDetailsElement>('proposal').open=true;v.get('original').querySelector('summary')!.focus();
+ v.update({...step,step:2,judgment:{phase:'predict',prediction:'',evidence:''}});assert.equal(v.document.activeElement?.id,'prediction');v.close();
+});
+test('theme messages and untrusted source or notes cannot replace state or inject markup',()=>{
+ const v=view();const hostile='<img src=x onerror="window.hacked=true">';v.update({...step,title:hostile,file:hostile,after:hostile,reason:hostile,error:hostile,judgment:{phase:'done',prediction:hostile,evidence:hostile,decision:'reject'}});
+ for(const type of ['theme','fixture','unknown'])v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type}}));
+ assert.equal(v.get('guide').hidden,false);assert.equal(v.document.querySelectorAll('img').length,0);assert.equal(v.get('after').textContent,hostile);assert.equal((v.window as any).hacked,undefined);v.close();
+});
+test('error and connection recovery clear stale text',()=>{
+ const v=view();v.update({error:'연결 오류',notice:'첫 연결',connected:true});assert.equal(v.get('error').hidden,false);v.update({});assert.equal(v.get('error').hidden,true);assert.equal(v.get('notice').hidden,true);assert.equal(v.get('connect').hidden,false);v.close();
+});
+test('commands and accessible names stay within the CSP and host allowlist',()=>{
  const v=view();for(const b of v.document.querySelectorAll<HTMLButtonElement>('button')){assert.ok((b.getAttribute('aria-label')||b.textContent||'').trim()||['file','model'].includes(b.id),b.outerHTML);if(b.dataset.command)assert.ok(PANEL_COMMANDS.has(b.dataset.command),b.dataset.command);}
- const csp=v.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');assert.match(csp||'',/default-src 'none'/);assert.match(csp||'',/nonce-test-nonce/);
- assert.equal(v.get('after').getAttribute('aria-label'),'제안 코드');v.close();
+ const csp=v.document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute('content');assert.match(csp||'',/default-src 'none'/);assert.match(csp||'',/nonce-test-nonce/);assert.equal(v.document.querySelectorAll('[style]').length,0);v.close();
+});
+test('keyboard-only prediction, check and explicit decision never accept on a continuation shortcut',()=>{
+ const v=view();v.update({...step,judgment:{phase:'predict',prediction:'',evidence:''}});
+ v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusStep'}}));assert.equal(v.document.activeElement?.id,'prediction');
+ v.get<HTMLTextAreaElement>('prediction').value='작성 중';v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'advance'},'the native continuation binding does not also submit a prediction');
+ v.get<HTMLTextAreaElement>('prediction').value='결과 30';v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'predict',prediction:'결과 30'});
+ v.update(step);assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.deepEqual(v.messages.at(-1),{command:'advance'});
+ v.update({...step,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});v.get<HTMLTextAreaElement>('evidence').value='실제로 10이라 거절';v.get('evidence').dispatchEvent(new v.window.Event('input'));
+ const count=v.messages.length;v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.equal(v.document.activeElement?.id,'keep');assert.equal(v.messages.length,count);
+ v.get('keep').dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));assert.equal(v.document.activeElement?.id,'reject');v.get('reject').click();assert.equal(v.messages.at(-1).decision,'reject');v.close();
+});
+test('task results remain separate from judgment and checking disables duplicate actions',()=>{
+ const v=view();const check={task:'npm test',sourceHash:'hash',status:'running' as const,durationMs:0,details:[]};v.update({...step,checking:true,check});
+ assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('cancel-check').hidden,false);const count=v.messages.length;v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count);
+ v.update({...step,check:{...check,status:'passed',exitCode:0},judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});assert.equal(v.get<HTMLButtonElement>('keep').disabled,true,'passing a check does not write a reason or keep a change');assert.match(v.get('check-title').textContent!,/통과/);
+ v.update({...step,check:{...check,status:'stale'}});assert.match(v.get('check-title').textContent!,/다시 검사/);v.close();
+});
+test('focus handoff disables notes and submission until the target view is ready',async()=>{
+ const v=view();v.update({...step,handoff:true,revision:7,judgment:{phase:'predict',prediction:'',evidence:''}});
+ assert.equal(v.get<HTMLTextAreaElement>('prediction').disabled,true);assert.deepEqual(v.messages.at(-1),{command:'rendered',revision:7});
+ assert.equal(v.get<HTMLButtonElement>('file').disabled,true);assert.equal(v.get<HTMLButtonElement>('next').disabled,true);
+ v.get<HTMLTextAreaElement>('prediction').value='아직 화면 준비 중';const count=v.messages.length;
+ v.get('prediction-form').dispatchEvent(new v.window.Event('submit',{cancelable:true}));v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.equal(v.messages.length,count);
+ v.update({...step,handoff:true,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});assert.equal(v.get<HTMLTextAreaElement>('evidence').disabled,true);
+ v.update({...step,handoff:false,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});
+ v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusStep',request:9}}));assert.equal(v.document.activeElement?.id,'evidence');
+ await new Promise(resolve=>v.window.requestAnimationFrame(resolve));assert.deepEqual(v.messages.at(-1),{command:'focused',request:9});v.close();
+});
+test('English main controls and tutorial route work without translating user content',()=>{
+ const v=view(false,'',false);assert.equal(v.document.documentElement.lang,'en');assert.equal(v.get('demo').textContent,'Practice editing & checking');assert.equal(v.get('tutorial').textContent,'How to');
+ v.click('tutorial');assert.equal(v.messages.at(-1).command,'tutorial');
+ v.update({...step,title:'내 코드의 제목',check:{task:'Check totals',sourceHash:'h',status:'failed',exitCode:1,durationMs:10,details:['expected 30, got 10']},judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'h'}});
+ assert.equal(v.get('title').textContent,'내 코드의 제목');assert.equal(v.get('keep').textContent,'Keep change');assert.equal(v.get('check-title').textContent,'× Check failed');assert.equal(v.get('check-task').textContent,'Check totals · Exit 1');v.close();
+});
+
+
+test('connection instructions remain visible during browser consent and disappear after connection',()=>{
+ const v=view();v.type('Keep this draft');v.update({busy:true,connecting:true,phase:'Connecting'});
+ assert.equal(v.get('account').hidden,false);assert.equal(v.get('connection-guide').hidden,false);
+ assert.equal(v.get('connection-wait').hidden,false);assert.match(v.get('connection-steps').textContent||'',/Codex/);
+ v.update({connected:true});assert.equal(v.get('connection-guide').hidden,true);
+ assert.equal(v.get<HTMLTextAreaElement>('intent').value,'Keep this draft');v.close();
+});
+test('the project is primary and attachments stay in optional settings',()=>{
+ const v=view();v.update({project:'Storefront',files:[]});
+ assert.equal(v.get('project-name').textContent,'Storefront');assert.equal(v.document.getElementById('context-hint'),null);
+ assert.equal(v.get('open-folder').hidden,true);assert.equal(v.get<HTMLDetailsElement>('chat-options').open,false);
+ v.get<HTMLDetailsElement>('chat-options').open=true;v.click('useCurrentFile');assert.equal(v.messages.at(-1).command,'useCurrentFile');v.close();
+});
+test('model recovery is adjacent to the request and retries without losing the draft',()=>{
+ const v=view();v.type('keep request');v.update({connected:true,error:'Model lookup failed',errorAction:'chooseModel'});
+ assert.equal(v.get('feedback').hidden,false);v.get('retry').click();assert.equal(v.messages.at(-1).command,'chooseModel');
+ v.update({connected:true,error:'Request failed',errorAction:'generate'});v.get('retry').click();assert.deepEqual(v.messages.at(-1),{command:'generate',intent:'keep request'});
+ v.update({connected:true});assert.equal(v.get('feedback').hidden,true);assert.equal(v.get<HTMLTextAreaElement>('intent').value,'keep request');v.close();
+});
+test('guided first changes show the edit immediately but still require a human decision',()=>{
+ const v=view();v.update({...step,guidedStart:true});assert.equal(v.get('prediction-form').hidden,true);assert.equal(v.get('guided-start').hidden,false);assert.equal(v.get<HTMLDetailsElement>('proposal').open,true);
+ assert.equal(v.messages.some(m=>m.command==='decide'),false);v.update({...step,guidedStart:true,judgment:{phase:'review',prediction:'Only unfinished tasks',evidence:'',reviewedHash:'x'}});
+ assert.equal(v.get('guided-start').hidden,true);assert.equal(v.get<HTMLButtonElement>('keep').disabled,true);v.close();
+});
+
+
+test('quick help opens in the panel and closes with focus restored',()=>{
+ const v=view();v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'showHelp'}}));
+ assert.equal(v.get('help').hidden,false);assert.equal(v.document.activeElement?.id,'close-help');
+ v.get('close-help').click();assert.equal(v.get('help').hidden,true);assert.equal(v.document.activeElement?.id,'tutorial');v.close();
+});
+
+test('a double click is latched before the host replies; streaming text renders and preserves the next draft',()=>{
+ const v=view();v.update({project:'Storefront',connected:true});v.type('해외 도메인은 어디서 추가해?');
+ v.get('request').dispatchEvent(new v.window.Event('submit',{cancelable:true}));
+ v.get('request').dispatchEvent(new v.window.Event('submit',{cancelable:true}));
+ assert.equal(v.messages.filter(m=>m.command==='generate').length,1);
+ const messages=[{role:'user' as const,text:'해외 도메인은 어디서 추가해?'},{role:'assistant' as const,text:'`app/domains.ts:1`을 확인했습니다.',status:'streaming' as const}];
+ v.update({project:'Storefront',busy:true,messages});assert.equal(v.get<HTMLTextAreaElement>('intent').value,'');
+ assert.match(v.get('messages').textContent!,/app\/domains.ts:1/);assert.equal(v.get('messages').querySelector('code')?.textContent,'app/domains.ts:1');
+ v.update({project:'Storefront',messages:[messages[0],{...messages[1],status:'stopped'}]});assert.match(v.get('messages').textContent!,/중단됨/);
+ v.type('그럼 변경해 줘');v.update({project:'Storefront',messages});assert.equal(v.get<HTMLTextAreaElement>('intent').value,'그럼 변경해 줘');v.close();
+});
+
+test('provider markup stays inert and English conversation controls have no Korean scaffolding',()=>{
+ const v=view(false,'',false);v.update({project:'Store',connected:true,messages:[{role:'assistant',text:'<img src=x onerror=alert(1)> **Result**\n```js\nalert("example")\n```',status:'complete'}]});
+ assert.equal(v.get('messages').querySelector('img'),null);assert.equal(v.get('messages').querySelector('strong')?.textContent,'Result');assert.match(v.get('messages').querySelector('pre')?.textContent||'',/alert/);
+ assert.doesNotMatch(v.get('home').textContent||'',/[가-힣]/);v.close();
+});
+
+
+test('chat and learning share a view without losing review input or sending the wrong shortcut',()=>{
+ const v=view();const review={...step,judgment:{phase:'review' as const,prediction:'30',evidence:'',reviewedHash:'review-a'}};
+ v.update(review);v.get<HTMLTextAreaElement>('evidence').value='checked the real result';v.get('evidence').dispatchEvent(new v.window.Event('input'));
+ v.click('showConversation');assert.equal(v.messages.at(-1).command,'showConversation');
+ v.update({...review,surface:'chat'});assert.equal(v.get('home').hidden,false);assert.equal(v.get('guide').hidden,true);
+ assert.equal(v.get('view-switch').hidden,false);v.type('Why does this change matter?');
+ v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',metaKey:true,cancelable:true}));
+ assert.deepEqual(v.messages.at(-1),{command:'generate',intent:'Why does this change matter?'});
+ v.click('showLearning');assert.equal(v.messages.at(-1).command,'showLearning');
+ v.update({...review,surface:'learn'});assert.equal(v.get('guide').hidden,false);
+ assert.equal(v.get<HTMLTextAreaElement>('evidence').value,'checked the real result');v.close();
+});
+
+
+test('worktree updates remain inert, keep the expanded view and focus, and identify the requested root',()=>{
+ const v=view();const tree={path:'/repo/<unsafe>',branch:'<img src=x>',head:'abc',current:false,changeCount:1,changes:[{path:'src/<script>.ts',status:' M',conflict:false}]};
+ const workspace={root:'/repo',updatedAt:1,worktrees:[tree]};v.update({workspace});
+ v.get<HTMLDetailsElement>('workspace-details').open=true;const button=v.get('worktree-list').querySelector('button')!;button.focus();
+ v.update({workspace:{...workspace,updatedAt:2,worktrees:[{...tree,changeCount:2}]}});
+ assert.equal(v.get<HTMLDetailsElement>('workspace-details').open,true);assert.equal(v.document.activeElement,button);
+ assert.equal(v.get('worktree-list').querySelectorAll('img,script').length,0);button.click();assert.deepEqual(v.messages.at(-1),{command:'openWorktree',root:'/repo/<unsafe>'});v.close();
 });

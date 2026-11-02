@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "title": "Skip negative prices",
+  "intent": "Add every non-negative price. This practice suggestion is deliberately wrong. Check it before deciding.",
+  "steps": [{
+    "file": "total.js",
+    "before": "      return result;",
+    "after": "      break;",
+    "reason": "Hypothesis: replace return with break to skip negative prices. Check what actually happens."
+  }]
+}

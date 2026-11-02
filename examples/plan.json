@@ -1,11 +1,11 @@
 {
   "version":1,
-  "title":"음수 가격을 합계에서 제외하기",
-  "intent":"잘못 들어온 음수 가격은 합계에 더하지 않는다.",
+  "title":"음수만 건너뛰기",
+  "intent":"음수는 건너뛰고, 뒤에 남은 가격도 합산한다.",
   "steps":[{
     "file":"price.ts",
-    "before":"    result += price;",
-    "after":"    if (price >= 0) {\n      result += price;\n    }",
-    "reason":"0 이상의 가격만 합계에 포함합니다. 빈 배열과 0원 가격의 동작도 확인해 보세요."
+    "before":"      return result;",
+    "after":"      break;",
+    "reason":"연습용 가설: break로 음수를 건너뛸 수 있을까요? [10, -5, 20]의 실제 결과를 확인하세요."
   }]
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 128 128" role="img" aria-label="An open code prompt and input cursor">
+  <rect width="128" height="128" rx="24" fill="#222222"/>
+  <g fill="none" stroke="#f4f1e9" stroke-width="7" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="m31 39 24 25-24 25M70 88h27"/>
+  </g>
+</svg>

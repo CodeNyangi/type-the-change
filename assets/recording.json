@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "durationSeconds": 25.404,
+  "environment": "Real VS Code 1.142.0, isolated Linux CI display",
+  "fixture": "Built-in Try demo: examples/price.ts, plan.json, check.mjs",
+  "sourceCommit": "05ac063837eaf2b2b17859e833d318da66814011",
+  "limitations": [
+    "Deliberately wrong local exercise, not a live AI response.",
+    "Four demo inputs, not proof of general correctness or learning gain.",
+    "Opened through the editor toolbar and Try demo; editing, checks and decisions use real VS Code keyboard controls.",
+    "Silent video with burned-in English captions."
+  ],
+  "reviewBranchCommit": "eea0340ad9476025740ada84ca1e0536ee3fa090",
+  "workflowRun": "https://github.com/CodeNyangi/type-the-change/actions/runs/41367287195"
+}

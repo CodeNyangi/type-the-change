@@ -1,0 +1,7 @@
+# openai/codex has no chooser config at the reference commit, so its default
+# blank-issue path remains available. Keep that behavior explicitly here.
+blank_issues_enabled: true
+contact_links:
+  - name: Private security report / 비공개 보안 제보
+    url: https://github.com/CodeNyangi/type-the-change/security/advisories/new
+    about: Report a vulnerability privately to the owner. / 보안 문제는 소유자에게 비공개로 알려 주세요.

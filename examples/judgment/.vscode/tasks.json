@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [{
+    "label": "Check totals",
+    "type": "process",
+    "command": "node",
+    "args": ["check.mjs"],
+    "options": {"cwd": "${workspaceFolder}"},
+    "group": "test",
+    "problemMatcher": "$type-the-change"
+  }]
+}

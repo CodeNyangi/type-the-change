@@ -32,6 +32,9 @@ export interface StepInspection {
   readonly progress: number;
 }
 
+/** Every intermediate file must remain readable by the typing workflow. */
+export const MAX_SOURCE_BYTES = 64 * 1024;
+
 const LIMITS = {
   planBytes: 256 * 1024,
   steps: 20,
@@ -198,6 +201,10 @@ export function validatePlanAgainstFiles(plan: Plan, files: Map<string, string>)
     } catch (error) {
       fail(`Step ${index + 1}: ${error instanceof Error ? error.message : 'Invalid original text.'}`);
     }
-    virtualFiles.set(step.file, resolved.prefix + resolved.after + resolved.suffix);
+    const updated = resolved.prefix + resolved.after + resolved.suffix;
+    if (Buffer.byteLength(updated, 'utf8') > MAX_SOURCE_BYTES) {
+      fail(`Step ${index + 1} would make ${step.file} exceed the 64 KiB file limit.`);
+    }
+    virtualFiles.set(step.file, updated);
   }
 }

@@ -1,0 +1,78 @@
+# Adapted for this extension from openai/codex at
+# 67f0994b532b8740f14b5b738af7b7b2a915b1d6: 2-extension.yml and 4-bug-report.yml.
+name: Bug report / 버그 제보
+description: Report a problem with the extension or its MCP connection. / 확장 또는 MCP 연결 문제를 알려 주세요.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Korean are welcome. 한국어로 편하게 작성해 주세요.
+        Search existing issues first; if the same problem is already reported, react to that issue instead of opening another.
+        먼저 같은 문제가 등록되어 있는지 찾아보고, 있다면 해당 이슈에 반응을 남겨 주세요.
+        Use a small example without tokens, private code, or personal paths. Sensitive findings belong in [SECURITY.md](https://github.com/CodeNyangi/type-the-change/blob/main/SECURITY.md)'s reporting channel.
+  - type: input
+    id: version
+    attributes:
+      label: Extension version / 확장 버전
+      description: Find Type the Change in VS Code's Extensions view. / 확장 목록에서 Type the Change의 버전을 확인해 주세요.
+      placeholder: "Installed version and source commit / 설치 버전과 개발 커밋"
+    validations:
+      required: true
+  - type: input
+    id: ide
+    attributes:
+      label: Editor and version / 편집기와 버전
+      placeholder: "VS Code 1.xxx.x"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system / 운영체제
+      description: OS version and architecture, if known. / 알고 있다면 버전과 아키텍처도 적어 주세요.
+      placeholder: "macOS · Windows · Linux, arm64 / x64"
+  - type: dropdown
+    id: flow
+    attributes:
+      label: Affected flow / 문제가 생긴 흐름
+      options:
+        - Demo or JSON import / 데모 또는 JSON 가져오기
+        - Codex chats or live progress / Codex 채팅 또는 진행 상태
+        - MCP connection / MCP 연결
+        - Editor follow, worktrees or practice / 편집기 연동·워크트리·실습
+        - Not sure / 잘 모르겠어요
+    validations:
+      required: true
+  - type: input
+    id: model_or_client
+    attributes:
+      label: Codex or MCP client version / Codex 또는 MCP 클라이언트 버전
+      description: Optional. Include the installed Codex or MCP client version. / 관련된 경우 설치된 Codex 또는 MCP 클라이언트의 버전을 적어 주세요.
+  - type: textarea
+    id: actual
+    attributes:
+      label: What went wrong? / 실제로 어떤 문제가 있었나요?
+      description: Include the error text with sensitive details removed. / 민감한 정보를 지운 오류 문구가 있으면 함께 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we reproduce it? / 어떻게 재현할 수 있나요?
+      description: List the command or button, input, and a minimal code example when possible. / 사용한 명령·버튼, 입력 내용, 가능한 최소 코드 예제를 알려 주세요.
+      placeholder: |
+        1. Open ...
+        2. Run or click ...
+        3. Type ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should have happened? / 기대한 동작은 무엇인가요?
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context / 추가 정보
+      description: Optional. Relevant settings, a workaround, or a suspected cause; diagnosing the problem is not required. / 관련 설정, 임시 해결 방법, 추정 원인을 자유롭게 적어 주세요. 원인 분석은 필수가 아닙니다.
