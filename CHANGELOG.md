@@ -1,7 +1,10 @@
 # Changelog
 
-## 0.4.0 — keyboard and task workflow (preview)
+## 0.4.0 — keyboard workflow and a clear entry point (preview)
 
+- Open from the editor title icon or Cmd/Ctrl+Alt+T. Add a visible walkthrough link, concise extension-page instructions, and English/Korean main controls.
+- Wait for both workbench and webview focus before accepting input; cancel stale focus requests.
+- Use a deliberately wrong built-in practice suggestion and an English video that starts from the icon.
 - Continue from prediction to source editing, explicit Save and Check, diff and human decision using keyboard controls. Continuing or passing a task never adopts a proposal.
 - Reuse a selected existing VS Code task, keep its terminal hidden, show exit status and available diagnostics beside the code, and support cancellation. Save only reviewed files; mark changed-code evidence stale.
 - Use open files and Git changes as initial file choices. Search only after typing, cap each query at 200 paths, cancel stale requests and preserve selections across searches.

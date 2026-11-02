@@ -2,19 +2,19 @@
 
 The extension now carries a review through prediction, native editing, an explicitly selected check, comparison and a human decision. Continuing and a zero task exit never accept a proposal.
 
-Implementation verification: source `a01231386caaa181b5454b736e62dafd28c10a66`, [successful workflow](https://github.com/CodeNyangi/type-the-change/actions/runs/41333860865). The following media/documentation commit does not change the runtime implementation.
+Release checks are attached to the [owner review PR](https://github.com/CodeNyangi/type-the-change/pull/1/checks). The packaged README links are frozen to the package source commit; the recording stores its own source commit in `assets/recording.json`.
 
 ## Verified behavior
 
-- 184 application tests pass locally and on Linux; Windows passes the applicable suite with two POSIX-specific cases skipped, including repeated competing-lock recovery.
-- 225 headless layouts cover 25 states, three widths and three theme families. Three keyboard interaction groups exercise production panel commands, IME composition guards and explicit decision controls.
-- Real VS Code 1.142.0 and minimum supported 1.100.0 run native editor and task checks. An incorrect `break` fails; a corrected `continue` passes. Unrelated dirty files remain unsaved, edits invalidate task evidence, and passing never completes a human judgment.
+- 189 application tests pass locally and on Linux; Windows passes the applicable suite with two POSIX-specific cases skipped, including repeated competing-lock recovery.
+- 450 headless layouts cover 25 states, three widths, three theme families and both English/Korean main controls. Three keyboard interaction groups exercise production panel commands, IME composition guards and explicit decision controls.
+- Real VS Code 1.142.0 and minimum supported 1.100.0 run native editor and task checks. Sequential native keyboard handoffs run five times per host. An incorrect `break` fails; a corrected `continue` passes. Unrelated dirty files remain unsaved, edits invalidate task evidence, and passing never completes a human judgment.
 - Real workbench UI covers cross-directory/Korean filename selection, prediction, typing, comparison, explicit decisions, MCP plans, JSON recovery, task selection and keyboard continuation. A generated repository contains 5,000 files with 200 lines each (1,000,000 total lines); a file beyond the initial suggestion limit is found by name.
-- The tutorial uses a real isolated VS Code window on a Linux virtual display. The file dialog is substituted; subsequent editing, selected task execution, comparison and decisions use keyboard controls. No private project data or live AI response appears.
+- The tutorial uses a real isolated VS Code window on a Linux virtual display. The editor title icon opens the guide and Try demo starts the exercise. Subsequent editing, selected task execution, comparison and decisions use keyboard controls. Main controls, notes and captions in the video are English. No private project data or live AI response appears.
 
 ## Problems caught during verification
 
-Opening a source document could steal focus after prediction became visible. Prediction now appears after source preparation, with focus assigned to the guide. Returning to source and to the decision form also waits for the intended workbench group.
+Opening a source document could steal focus after prediction became visible. Prediction now appears after source preparation, with focus assigned to the guide. A later repeated run exposed delayed webview focus messages. The handoff now waits for both workbench and iframe acknowledgments, disables note input while moving, and cancels obsolete requests instead of replaying them when a webview becomes ready. Returning to code drains earlier rendered state before native input resumes.
 
 VS Code tasks normally save all dirty editors. The first task picker now explicitly describes setting `task.saveBeforeRun` to `never` before applying it to the workspace, or to user settings if no folder is open. Cancel and compare-only choices make no preference change. The extension then saves only reviewed documents and checks the preference again before task launch. The selected preference also affects other tasks in its scope and can be changed in VS Code settings.
 

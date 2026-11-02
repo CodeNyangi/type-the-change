@@ -308,20 +308,24 @@ async function testNativeTyping(api:ExtensionApi,root:string){
     assert.equal(windows.document.getText(),'export function windowsValue() {\r\n  const value = 2;\r\n  return value;\r\n}\r\n');
     await acceptMatched(api);assert.equal(api.getState()?.complete,true);await api.stop();
 
-    const sequenceOriginal='export function total(price: number) {\n  return price;\n}\n';
-    const sequence=await startFixture(api,root,'native-sequence.ts',sequenceOriginal,[
-      {file:'native-sequence.ts',before:'return price;',after:'const amount = price;\n  return amount;',reason:'Name the amount before returning it.'},
-      {file:'native-sequence.ts',before:'return amount;',after:'return Math.max(0, amount);',reason:'Prevent a negative result.'},
-    ]);
-    await typeCharacters('const amount = price;\nreturn amount;');
-    assert.equal(api.getState()?.status,'matched');await acceptMatched(api);
-    assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
-    assert.equal(sequence.document.getText(vscode.window.visibleTextEditors.find(editor=>editor.document.uri.toString()===sequence.document.uri.toString())!.selection),'return amount;','the second same-file replacement is selected without a mouse');
-    await api.predict('Negative amounts become zero; positive amounts remain unchanged.');
-    await assertGuideBesideSource(path.join(root,'native-sequence.ts'),true);
-    await typeCharacters('return Math.max(0, amount);');
-    assert.equal(api.getState()?.status,'matched',`second step buffer: ${sequence.document.getText()}`);await acceptMatched(api);assert.equal(api.getState()?.complete,true);
-    assert.equal(await readFile(path.join(root,'native-sequence.ts'),'utf8'),sequenceOriginal);await api.stop();
+    for(let repetition=0;repetition<5;repetition++){
+      const sequenceFile=`native-sequence-${repetition}.ts`;
+      const sequenceOriginal='export function total(price: number) {\n  return price;\n}\n';
+      const sequence=await startFixture(api,root,sequenceFile,sequenceOriginal,[
+        {file:sequenceFile,before:'return price;',after:'const amount = price;\n  return amount;',reason:'Name the amount before returning it.'},
+        {file:sequenceFile,before:'return amount;',after:'return Math.max(0, amount);',reason:'Prevent a negative result.'},
+      ]);
+      await typeCharacters('const amount = price;\nreturn amount;');
+      assert.equal(api.getState()?.status,'matched');await acceptMatched(api);
+      assert.equal(api.getState()?.index,1,'the next step resolves against the newly typed buffer');
+      assert.equal(sequence.document.getText(vscode.window.visibleTextEditors.find(editor=>editor.document.uri.toString()===sequence.document.uri.toString())!.selection),'return amount;','the second same-file replacement is selected without a mouse');
+      await api.predict('Negative amounts become zero; positive amounts remain unchanged.');
+      await assertGuideBesideSource(path.join(root,sequenceFile),true);
+      await typeCharacters('return Math.max(0, amount);');
+      assert.equal(api.getState()?.status,'matched',`second step buffer: ${sequence.document.getText()}`);await acceptMatched(api);assert.equal(api.getState()?.complete,true);
+      assert.equal(await readFile(path.join(root,sequenceFile),'utf8'),sequenceOriginal);await api.stop();
+    }
+
   }finally{
     await api.stop();
     for(const [key,value]of previous)await config.update(key,value,vscode.ConfigurationTarget.Workspace);

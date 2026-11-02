@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {JSDOM,VirtualConsole} from 'jsdom';
 import {panelHtml,PANEL_COMMANDS,type PanelState} from '../src/panel-view.js';
 
-function view(mac=true,draft=''){
+function view(mac=true,draft='',korean=true){
   const messages:any[]=[],errors:unknown[]=[],saved:any[]=[];
   const console=new VirtualConsole();console.on('jsdomError',e=>errors.push(e));
-  const dom=new JSDOM(panelHtml('test-nonce',mac),{runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:console,beforeParse(w){
+  const dom=new JSDOM(panelHtml('test-nonce',mac,korean),{runScripts:'dangerously',pretendToBeVisual:true,virtualConsole:console,beforeParse(w){
     (w as any).acquireVsCodeApi=()=>({postMessage:(m:any)=>messages.push(JSON.parse(JSON.stringify(m))),getState:()=>({intent:draft}),setState:(s:any)=>saved.push(s)});
   }});
   const window=dom.window,document=window.document;
@@ -149,4 +149,20 @@ test('task results remain separate from judgment and checking disables duplicate
  assert.equal(v.get<HTMLButtonElement>('next').disabled,true);assert.equal(v.get('cancel-check').hidden,false);const count=v.messages.length;v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,altKey:true,cancelable:true}));assert.equal(v.messages.length,count);
  v.update({...step,check:{...check,status:'passed',exitCode:0},judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});assert.equal(v.get<HTMLButtonElement>('keep').disabled,true,'passing a check does not write a reason or keep a change');assert.match(v.get('check-title').textContent!,/통과/);
  v.update({...step,check:{...check,status:'stale'}});assert.match(v.get('check-title').textContent!,/다시 검사/);v.close();
+});
+test('focus handoff disables notes and submission until the target view is ready',async()=>{
+ const v=view();v.update({...step,handoff:true,revision:7,judgment:{phase:'predict',prediction:'',evidence:''}});
+ assert.equal(v.get<HTMLTextAreaElement>('prediction').disabled,true);assert.deepEqual(v.messages.at(-1),{command:'rendered',revision:7});
+ v.get<HTMLTextAreaElement>('prediction').value='아직 화면 준비 중';const count=v.messages.length;
+ v.get('prediction-form').dispatchEvent(new v.window.Event('submit',{cancelable:true}));v.window.dispatchEvent(new v.window.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,cancelable:true}));assert.equal(v.messages.length,count);
+ v.update({...step,handoff:true,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});assert.equal(v.get<HTMLTextAreaElement>('evidence').disabled,true);
+ v.update({...step,handoff:false,judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'hash'}});
+ v.window.dispatchEvent(new v.window.MessageEvent('message',{data:{type:'focusStep',request:9}}));assert.equal(v.document.activeElement?.id,'evidence');
+ await new Promise(resolve=>v.window.requestAnimationFrame(resolve));assert.deepEqual(v.messages.at(-1),{command:'focused',request:9});v.close();
+});
+test('English main controls and tutorial route work without translating user content',()=>{
+ const v=view(false,'',false);assert.equal(v.document.documentElement.lang,'en');assert.equal(v.get('demo').textContent,'Try demo');assert.equal(v.get('tutorial').textContent,'How to');
+ v.click('tutorial');assert.equal(v.messages.at(-1).command,'tutorial');
+ v.update({...step,title:'내 코드의 제목',check:{task:'Check totals',sourceHash:'h',status:'failed',exitCode:1,durationMs:10,details:['expected 30, got 10']},judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'h'}});
+ assert.equal(v.get('title').textContent,'내 코드의 제목');assert.equal(v.get('keep').textContent,'Keep change');assert.equal(v.get('check-title').textContent,'× Check failed');assert.equal(v.get('check-task').textContent,'Check totals · Exit 1');v.close();
 });

@@ -117,7 +117,7 @@ try {
   app = await electron.launch({executablePath, env, timeout: 60_000, args: [
     workspace, `--user-data-dir=${profile}`, `--extensions-dir=${path.join(root, 'extensions')}`,
     `--extensionDevelopmentPath=${process.cwd()}`, '--disable-workspace-trust',
-    '--skip-welcome', '--skip-release-notes', '--disable-updates', '--no-sandbox',
+    '--skip-welcome', '--skip-release-notes', '--disable-updates', '--no-sandbox', '--locale=en',
   ]});
   page = await app.firstWindow();
   page.setDefaultTimeout(20_000);
@@ -125,9 +125,13 @@ try {
   // Opening the command palette before startup activation snapshots an
   // incomplete command list. Wait for the extension's visible entry point.
   await page.locator('.statusbar-item').filter({hasText: 'Type the Change'}).waitFor({state: 'visible', timeout: 60_000});
-  await command('Type the Change: Start');
+  await page.keyboard.press('Control+p');
+  await page.locator('.quick-input-widget input[type="text"]').fill(first);await page.keyboard.press('Enter');
+  await page.locator('.editor-actions .action-label[aria-label*="Type the Change"]').first().click();
   let view = await panel();
   await view.locator('#home').waitFor({state: 'visible'});
+  await view.locator('#tutorial').waitFor({state:'visible'});
+  report.checks.push('The editor title icon opens the guide directly and exposes the short walkthrough.');
   assert.equal(await view.locator('#generate').isDisabled(), true);
   await view.locator('#intent').fill('음수 가격을 제외해 주세요');
   assert.equal(await view.locator('#generate').isEnabled(), true);
@@ -175,7 +179,7 @@ try {
   report.checks.push('Outside edits remain comparable but cannot be kept; editing invalidates earlier evidence.');
 
   await page.keyboard.press('Control+Alt+Enter');
-  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'검사 없이 비교'}).waitFor({state:'visible'});await page.keyboard.press('Enter');
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'Compare only'}).waitFor({state:'visible'});await page.keyboard.press('Enter');
   await view.locator('#reflection').waitFor({state:'visible'});
   assert.equal(await view.locator('#keep').isDisabled(),true);
   await decide(view);
@@ -206,10 +210,10 @@ try {
   await view.locator('#demo').click();await view.locator('#guide').waitFor({state:'visible'});
   await page.screenshot({path:path.join(artifacts,'learning-first-look.png')});
   await predict(view,'[10, -5, 20]의 합계는 30이 되어야 한다.');
-  await focusSource(view);await page.keyboard.type('      break;');await statusIs(view,'editing');
+  await focusSource(view);await page.keyboard.type('      break;');await statusIs(view,'matched');
   await page.keyboard.press('Control+Alt+Enter');
-  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'음수 합계 검사'}).waitFor({state:'visible'});
-  assert.ok((await page.locator('.quick-input-list').innerText()).includes('전체 자동 저장'));
+  await page.locator('.quick-input-list .monaco-list-row').filter({hasText:'Check totals'}).waitFor({state:'visible'});
+  assert.ok((await page.locator('.quick-input-list').innerText()).includes('auto-save'));
   await page.keyboard.press('Enter');
   await view.locator('#check-result[data-status=failed]').waitFor({state:'visible'});await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
   await until(async()=>(await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')),'The diff must show the actual alternative.');
@@ -218,7 +222,7 @@ try {
   await view.locator('#end').click();await view.locator('#home').waitFor({state:'visible'});
   assert.ok((await page.locator('.monaco-diff-editor').allTextContents()).some(t=>t.includes('break;')));
   await view.locator('#demo').click();await predict(view,'음수를 만나도 다음 값을 더한다.');
-  await focusSource(view);await page.keyboard.type('      continue;');await statusIs(view,'matched');
+  await focusSource(view);await page.keyboard.type('      continue;');await statusIs(view,'editing');
   await page.keyboard.press('Control+Alt+Enter');await view.locator('#check-result[data-status=passed]').waitFor({state:'visible'});
   assert.equal(await page.locator('.terminal-wrapper').first().isVisible(),false,'checks must not open or focus the terminal');
   await view.locator('#evidence').fill('continue는 다음 반복으로 이동하여 10과 20을 더한다.');await page.keyboard.press('Control+Enter');

@@ -13,6 +13,7 @@ import {readPlanFile} from './plan-file.js';
 import {newJudgment,predict,beginReview,decide,invalidateJudgment,type Judgment,type Decision} from './judgment.js';
 import {pickFiles} from './file-picker.js';
 import {TaskChecks,type CheckResult} from './task-checks.js';
+import {text as t} from './locale.js';
 
 type ReviewRecord={step:number;file:string;prediction:string;evidence:string;decision:Decision;sourceHash:string;recordedAt:string;check?:CheckResult};
 type Session={root:string;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;ready:boolean;revision:number;check?:CheckResult;checking?:boolean;demoTask?:vscode.Task;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
@@ -85,17 +86,17 @@ export function activate(context:vscode.ExtensionContext){
   function render(){
     const common:PanelState={files:composer.files,model:composer.modelName,connected:composer.connected,busy,phase:composer.phase,error:composer.error,notice:composer.notice};
     if(!session){panel.update(common);return;}
-    if(!session.ready){panel.update({...common,busy:true,phase:'변경 여는 중'});return;}
+    if(!session.ready){panel.update({...common,busy:true,phase:t('변경 여는 중','Opening change')});return;}
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);
     // Disposal temporarily removes comparison evidence. Keep the recorded
     // review until reopening establishes whether code actually changed.
     const unavailable=[...s.documents.values()].some(document=>document.isClosed);
     if(!unavailable&&invalidateJudgment(s.judgment,sourceHash(s))){s.complete=false;void vscode.commands.executeCommand('setContext','typeTheChange.active',true);}
     const complete=s.complete&&!unavailable&&s.judgment.phase==='done';
-    const messages={untouched:'',editing:'제안과 다른 코드 · 직접 판단해 주세요.',matched:'글자는 같아요 · 근거를 확인해 주세요.',outside:'안내 범위 밖도 바뀌었어요. 유지하려면 새 수정안으로 확인하세요.'};
+    const messages={untouched:'',editing:t('제안과 다른 코드 · 직접 판단해 주세요.','Your alternative · Check the evidence.'),matched:t('글자는 같아요 · 근거를 확인해 주세요.','Text matches · Check the evidence.'),outside:t('안내 범위 밖도 바뀌었어요. 유지하려면 새 수정안으로 확인하세요.','Other code changed · Request a new plan to keep it.')};
     if(s.check&&s.check.status!=='running'&&s.check.sourceHash!==sourceHash(s))s.check={...s.check,status:'stale'};
     panel.update({...common,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:messages[inspection.status],canContinue:!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan,check:s.check,checking:!!s.checking});
-    status.text=complete?'$(check) 판단 기록됨':`$(edit) ${s.index+1}/${s.plan.steps.length}`;
+    status.text=complete?'$(check) '+t('판단 기록됨','Decision recorded'):`$(edit) ${s.index+1}/${s.plan.steps.length}`;
     status.tooltip='Type the Change';status.command='typeTheChange.start';
     clearDecorations();
     if(!s.complete&&inspection.status!=='outside')for(const editor of vscode.window.visibleTextEditors){
@@ -109,6 +110,7 @@ export function activate(context:vscode.ExtensionContext){
   async function focus(select=false){
     if(!session)return;
     const s=session;
+    await panel.prepareSourceFocus();if(session!==s)return;
     if(s.document.isClosed){const {document}=await source(s.root,s.plan.steps[s.index].file);if(session!==s)return;bindDocument(s,document);}
     const editor=await vscode.window.showTextDocument(s.document,{viewColumn:vscode.ViewColumn.One,preserveFocus:false,preview:false});
     if(session!==s)return;
@@ -123,7 +125,7 @@ export function activate(context:vscode.ExtensionContext){
     // Finish the explicit return-to-code action in the workbench before typing.
     await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
     if(session!==s)return;
-    render();
+    panel.releaseFocus();render();
   }
   async function startPlan(plan:Plan,root:string,requestEpoch?:number){
     local();const epoch=requestEpoch??++sessionEpoch;if(epoch!==sessionEpoch)return;
@@ -141,7 +143,7 @@ export function activate(context:vscode.ExtensionContext){
     if(session!==current||epoch!==sessionEpoch)return;
     composer.error='';composer.notice='';render();await focus(true);
     // Establish the native source group before moving a home panel out of it.
-    if(session!==current||epoch!==sessionEpoch)return;current.ready=true;render();await panel.focusStep();
+    if(session!==current||epoch!==sessionEpoch)return;panel.holdFocus();current.ready=true;render();await panel.focusStep();
   }
   async function next(){
     if(!session)return;
@@ -161,7 +163,7 @@ export function activate(context:vscode.ExtensionContext){
     s.checking=true;render();
     try{
       const task=await checks.select(s.root,false,s.demoTask);if(session!==s||!task)return;
-      if(task==='compare'){await review();if(session===s)await panel.focusStep();return;}
+      if(task==='compare'){await review();return;}
       if(!await refreshSessionDocuments(s))return;
       // This action is explicitly labelled Save and Check. Save only the files
       // in this review, never unrelated dirty work in another editor.
@@ -177,7 +179,7 @@ export function activate(context:vscode.ExtensionContext){
         result.details=checkDetails(s);
       }
       s.check=result;render();
-      if(['passed','failed','unknown'].includes(result.status)){await review();if(session===s)await panel.focusStep();}
+      if(['passed','failed','unknown'].includes(result.status))await review();
     }finally{if(session===s){s.checking=false;render();}}
   }
   function checkDetails(s:Session){
@@ -207,7 +209,9 @@ export function activate(context:vscode.ExtensionContext){
         validatePlanAgainstFiles({...s.plan,steps:s.plan.steps.slice(index)},files);
         resolved=resolveStep(s.documents.get(step.file)!.getText(),step);
       }catch{s.replan=true;render();return;}
-      session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),check:undefined,deciding:false};render();await focus(true);await panel.focusStep();
+      const nextSession:Session={...s,index,document:s.documents.get(step.file)!,resolved,judgment:newJudgment(),check:undefined,deciding:false,ready:false};
+      session=nextSession;render();await focus(true);
+      if(session!==nextSession)return;panel.holdFocus();nextSession.ready=true;render();await panel.focusStep();
     }finally{s.deciding=false;}
   }
   async function stop(){
@@ -215,7 +219,7 @@ export function activate(context:vscode.ExtensionContext){
     session=undefined;clearDecorations();composer.error='';composer.notice='';
     await vscode.commands.executeCommand('setContext','typeTheChange.active',false);
     status.text='$(edit) Type the Change';status.command='typeTheChange.start';
-    render();panel.focusIntent();
+    panel.releaseFocus();render();panel.focusIntent();
   }
   async function signIn(parent?:AbortSignal){
     local();
@@ -323,11 +327,12 @@ export function activate(context:vscode.ExtensionContext){
   async function loadPending(fromRoot?:string){const epoch=++sessionEpoch,root=fromRoot||await rootFolder();if(root&&epoch===sessionEpoch){const data=await readBridgeFile(root,'plan.json');if(epoch!==sessionEpoch)return;if(!data)throw Error('MCP에서 받은 수정안이 없어요.');await startPlan(parsePlan(JSON.stringify(data)),root,epoch);}}
   async function demo(){
     local();const epoch=++sessionEpoch,root=await mkdtemp(path.join(tmpdir(),'type-the-change-'));if(epoch!==sessionEpoch)return;
-    const code=await readFile(context.asAbsolutePath('examples/price.ts'),'utf8'),plan=parsePlan(await readFile(context.asAbsolutePath('examples/plan.json'),'utf8'));
+    const code=await readFile(context.asAbsolutePath('examples/price.ts'),'utf8'),originalPlan=parsePlan(await readFile(context.asAbsolutePath('examples/plan.json'),'utf8'));
+    const plan:Plan={...originalPlan,title:t(originalPlan.title,'Skip negative prices'),intent:t(originalPlan.intent,'Skip negative prices and keep adding the rest.'),steps:originalPlan.steps.map(step=>({...step,reason:t(step.reason,'Practice hypothesis: can break skip a negative price? Check [10, -5, 20] before deciding.')}))};
     if(epoch!==sessionEpoch)return;await writeFile(path.join(root,'price.ts'),code,{flag:'wx'});
     await writeFile(path.join(root,'check.mjs'),await readFile(context.asAbsolutePath('examples/check.mjs'),'utf8'),{flag:'wx'});
     await startPlan(plan,root,epoch);
-    if(session?.root===root){session.demoTask=new vscode.Task({type:'type-the-change-demo'},vscode.TaskScope.Workspace,'음수 합계 검사','Type the Change',new vscode.ProcessExecution(process.execPath,[path.join(root,'check.mjs')],{cwd:root,env:{ELECTRON_RUN_AS_NODE:'1'}}),['$type-the-change']);render();}
+    if(session?.root===root){session.demoTask=new vscode.Task({type:'type-the-change-demo'},vscode.TaskScope.Workspace,t('음수 합계 검사','Check totals'),'Type the Change',new vscode.ProcessExecution(process.execPath,[path.join(root,'check.mjs')],{cwd:root,env:{ELECTRON_RUN_AS_NODE:'1'}}),['$type-the-change']);render();}
   }
   async function mcpConfig(){
     const root=await rootFolder();if(!root)return;
@@ -347,11 +352,12 @@ export function activate(context:vscode.ExtensionContext){
     const hash=sourceHash(s),before=(s.complete?s.originalFiles:s.expectedFiles).get(file)||'';
     const original=vscode.Uri.from({scheme:'type-the-change-before',path:`/${file}`,query:createHash('sha256').update(s.root).update(before).digest('hex')});
     snapshots.set(original.toString(),before);
-    await vscode.commands.executeCommand('vscode.diff',original,vscode.Uri.file(path.join(s.root,file)),`${file} · 변경 전 ↔ 현재`,{preview:true,viewColumn:vscode.ViewColumn.One});
+    panel.holdFocus();
+    await vscode.commands.executeCommand('vscode.diff',original,vscode.Uri.file(path.join(s.root,file)),`${file} · ${t('변경 전 ↔ 현재','Before ↔ Now')}`,{preview:true,viewColumn:vscode.ViewColumn.One});
     if(session!==s)return;
     if(sourceHash(s)!==hash){render();throw Error('비교하는 동안 코드가 바뀌었어요. 다시 확인해 주세요.');}
     if(!s.complete){beginReview(s.judgment,hash);s.replan=false;}
-    render();panel.show(true);
+    render();await panel.focusStep();
   }
   async function guard(action:()=>unknown){
     try{composer.error='';await action();}
@@ -363,7 +369,7 @@ export function activate(context:vscode.ExtensionContext){
       try{composer.connected=(await auth.status()).planAccess;}catch{}
       const fileErrors:Record<string,string>={unsafe_path:'작업 폴더 안의 소스 파일을 선택하세요.',missing_file:'파일을 찾을 수 없어요.',not_regular_file:'일반 텍스트 파일을 선택하세요.',too_large:'파일은 64 KiB 이하로 선택하세요.',invalid_text:'UTF-8 텍스트 파일을 선택하세요.',duplicate_file:'같은 파일이 여러 경로로 포함됐어요. 파일마다 하나의 경로를 사용해 주세요.',unavailable:'파일을 읽을 수 없어요.'};
       composer.error=error instanceof AuthError&&error.requiresSignIn?'ChatGPT 연결이 만료됐어요. 다시 연결해 주세요.':error instanceof WorkspaceFileError?fileErrors[error.code]:error instanceof Error?error.message:'완료하지 못했어요. 다시 시도해 주세요.';
-      panel.show(true);render();
+      panel.releaseFocus();panel.show(true);render();
       if(error instanceof InferenceError&&error.usageLimited){if(await vscode.window.showErrorMessage(composer.error,'사용량'))await guard(usage);}
     }
   }
@@ -379,6 +385,7 @@ export function activate(context:vscode.ExtensionContext){
     start:openHome,generate,chooseFiles:()=>{if(!busy)return chooseFiles();},chooseModel,signIn:connect,
     signOut:async()=>{sessionEpoch++;generationAbort?.abort();try{await auth.signOut();}finally{composer.connected=false;render();}},
     import:importPlan,loadPending:()=>loadPending(),next,advance,runCheck,chooseCheck,cancelCheck:()=>checks.cancel(),problems:()=>vscode.commands.executeCommand('workbench.actions.view.problems'),focus:()=>focus(),stop,demo,mcpConfig,usage,review,
+    tutorial:()=>vscode.env.openExternal(vscode.Uri.parse('https://github.com/CodeNyangi/type-the-change/releases/download/v0.4.0/type-the-change-quickstart.mp4')),
     predict:arg=>makePrediction(arg?.prediction),decide:makeDecision,
   };
   for(const [name,action]of Object.entries(commands))context.subscriptions.push(vscode.commands.registerCommand(`typeTheChange.${name}`,(arg?:unknown)=>guard(()=>action(arg))));

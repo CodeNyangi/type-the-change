@@ -5,7 +5,7 @@
   "steps":[{
     "file":"price.ts",
     "before":"      return result;",
-    "after":"      continue;",
-    "reason":"return은 함수를 끝내고, continue는 이번 값만 건너뜁니다. [10, -5, 20]과 [-5, 10, 20]의 결과를 예상해 보세요."
+    "after":"      break;",
+    "reason":"연습용 가설: break로 음수를 건너뛸 수 있을까요? [10, -5, 20]의 실제 결과를 확인하세요."
   }]
 }

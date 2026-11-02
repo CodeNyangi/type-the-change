@@ -50,7 +50,9 @@
     "commands": [
       {
         "command": "typeTheChange.start",
-        "title": "Type the Change: Start"
+        "title": "Type the Change: Start",
+        "shortTitle": "Type the Change",
+        "icon": {"light": "assets/toolbar-light.svg", "dark": "assets/toolbar-dark.svg"}
       },
       {
         "command": "typeTheChange.generate",
@@ -101,6 +103,10 @@
         "title": "Type the Change: Try the Demo"
       },
       {
+        "command": "typeTheChange.tutorial",
+        "title": "Type the Change: Watch the Walkthrough"
+      },
+      {
         "command": "typeTheChange.mcpConfig",
         "title": "Type the Change: Show MCP Connection"
       },
@@ -121,7 +127,16 @@
         "title": "Type the Change: Review Changes"
       }
     ],
+    "menus": {
+      "editor/title": [{"command": "typeTheChange.start", "when": "resourceScheme == file", "group": "navigation@1"}]
+    },
     "keybindings": [
+      {
+        "command": "typeTheChange.start",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "!typeTheChange.active"
+      },
       {
         "command": "typeTheChange.advance",
         "key": "ctrl+alt+enter",

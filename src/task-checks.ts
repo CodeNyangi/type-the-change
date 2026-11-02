@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import {createHash} from 'node:crypto';
+import {text as t} from './locale.js';
 
 export interface CheckResult {
   task:string;status:'running'|'passed'|'failed'|'unknown'|'cancelled'|'stale'|'error';
@@ -32,9 +33,9 @@ export class TaskChecks implements vscode.Disposable {
     const previous=tasks.find(task=>fingerprint(task)===saved);
     if(previous&&!force&&!configureSaving)return previous;
     const workspaceScope=!!vscode.workspace.workspaceFolders?.length;
-    const saveNote=configureSaving?`선택하면 ${workspaceScope?'이 작업 공간':'VS Code 전체'}의 작업 실행 전 전체 자동 저장을 끕니다. 검토 파일만 저장합니다.`:undefined;
-    const items=tasks.sort((a,b)=>Number(b.group?.id===vscode.TaskGroup.Test.id)-Number(a.group?.id===vscode.TaskGroup.Test.id)).map(task=>({label:task.name,description:task.source,detail:saveNote??(task.group?.id===vscode.TaskGroup.Test.id?'테스트':task.group?.id===vscode.TaskGroup.Build.id?'빌드':undefined),task}));
-    const selected=await vscode.window.showQuickPick([...items,{label:'검사 없이 비교',description:'이번 변경은 직접 근거 확인',detail:undefined,task:undefined}],{title:'저장하고 실행할 검사',placeHolder:tasks.length?'처음 한 번 선택 · 다음부터 같은 검사 실행':'설정된 검사가 없어요 · VS Code Tasks에서 추가할 수 있어요'});
+    const saveNote=configureSaving?t(`선택하면 ${workspaceScope?'이 작업 공간':'VS Code 전체'}의 작업 실행 전 전체 자동 저장을 끕니다. 검토 파일만 저장합니다.`,`Sets ${workspaceScope?'workspace':'user'} task auto-save to never. Only reviewed files are saved.`):undefined;
+    const items=tasks.sort((a,b)=>Number(b.group?.id===vscode.TaskGroup.Test.id)-Number(a.group?.id===vscode.TaskGroup.Test.id)).map(task=>({label:task.name,description:task.source,detail:saveNote??(task.group?.id===vscode.TaskGroup.Test.id?t('테스트','Test'):task.group?.id===vscode.TaskGroup.Build.id?t('빌드','Build'):undefined),task}));
+    const selected=await vscode.window.showQuickPick([...items,{label:t('검사 없이 비교','Compare only'),description:t('이번 변경은 직접 근거 확인','Review without running a task'),detail:undefined,task:undefined}],{title:t('저장하고 실행할 검사','Choose a check'),placeHolder:tasks.length?t('처음 한 번 선택 · 다음부터 같은 검사 실행','Choose once · Reused for this project'):t('설정된 검사가 없어요 · VS Code Tasks에서 추가할 수 있어요','No checks found · Add a VS Code task')});
     if(!selected?.task)return selected?'compare':undefined;
     // VS Code otherwise saves every dirty editor, including unrelated work.
     // The picker explicitly describes this persistent setting before selection.

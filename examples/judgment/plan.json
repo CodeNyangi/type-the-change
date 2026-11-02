@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "title": "음수만 건너뛰기",
-  "intent": "음수를 제외하고 나머지를 모두 더합니다. 이 연습용 제안은 일부러 틀렸습니다. 결과를 확인해 판단하세요.",
+  "title": "Skip negative prices",
+  "intent": "Add every non-negative price. This practice suggestion is deliberately wrong. Check it before deciding.",
   "steps": [{
     "file": "total.js",
     "before": "      return result;",
     "after": "      break;",
-    "reason": "연습용 가설: return 대신 break를 쓰면 음수를 건너뛸 수 있을까요? 실제 실행 결과로 확인하세요."
+    "reason": "Hypothesis: replace return with break to skip negative prices. Check what actually happens."
   }]
 }

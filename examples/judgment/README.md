@@ -1,12 +1,12 @@
 # A proposal worth questioning
 
 This public, dependency-free exercise deliberately proposes the wrong change.
-No actual AI service generated it. It is also the fixture used in the usage video.
+No actual AI service generated it. The video uses the equivalent built-in **Try demo** exercise.
 
 Open this folder in VS Code, then run **Type the Change: Open a Plan** and choose
 `plan.json`. Predict what `total([10, -5, 20])` should return before revealing the
 proposal. Type a change yourself. Press **Ctrl+Alt+Enter / ⌘⌥Enter** and choose
-**합계 동작 검사** the first time. The included VS Code task saves the reviewed
+**Check totals** the first time. The included VS Code task saves the reviewed
 file and runs the check without opening the terminal. You can also run it manually:
 
 ```sh

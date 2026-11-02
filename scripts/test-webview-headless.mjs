@@ -15,7 +15,7 @@ const bootstrap=`<script nonce="${nonce}">
 window.__ttcHost={messages:[],draft:{}};
 window.acquireVsCodeApi=()=>({postMessage:message=>window.__ttcHost.messages.push(message),getState:()=>window.__ttcHost.draft,setState:state=>window.__ttcHost.draft=state});
 </script>`;
-const html=mac=>panelHtml(nonce,mac).replace('<script nonce=',bootstrap+'<script nonce=');
+const html=(mac,korean=true)=>panelHtml(nonce,mac,korean).replace('<script nonce=',bootstrap+'<script nonce=');
 
 // Representative VS Code theme tokens. This verifies the webview's rendering
 // against supplied themes; it does not run VS Code or claim native theme QA.
@@ -66,7 +66,7 @@ try{
   const update=async state=>page.evaluate(state=>window.dispatchEvent(new MessageEvent('message',{data:state})),state);
   const events=()=>page.evaluate(()=>window.__ttcHost.messages);
   const lastCommand=async()=> (await events()).at(-1)?.command;
-  const fresh=async(mac=true)=>{await page.goto('about:blank');await page.setContent(html(mac));await page.waitForFunction(()=>window.__ttcHost?.messages.some(m=>m.command==='ready'));};
+  const fresh=async(mac=true,korean=true)=>{await page.goto('about:blank');await page.setContent(html(mac,korean));await page.waitForFunction(()=>window.__ttcHost?.messages.some(m=>m.command==='ready'));};
   const assertState=async(name,state)=>{
     const active=typeof state.file==='string';
     assert.equal(await page.locator('#home').isVisible(),!active,`${name}: home`);
@@ -89,8 +89,8 @@ try{
   };
 
   // Real rendering and accessibility-tree checks for every layout/state pair.
-  for(const width of [300,460,720])for(const [theme,tokens]of Object.entries(themes)){
-    await page.setViewportSize({width,height:900});await fresh();
+  for(const language of ['ko','en'])for(const width of [300,460,720])for(const [theme,tokens]of Object.entries(themes)){
+    await page.setViewportSize({width,height:900});await fresh(true,language==='ko');
     await page.evaluate(tokens=>{for(const [key,value]of Object.entries(tokens))document.documentElement.style.setProperty('--vscode-'+key,value);},tokens);
     for(const [name,state]of Object.entries(states)){
       await update(state);
@@ -107,10 +107,10 @@ try{
         assert.notEqual(border.color,'rgba(0, 0, 0, 0)');assert.notEqual(border.width,'0px');
       }
       const ax=await page.locator('body').ariaSnapshot();
-      const stem=`${width}-${theme}-${name}`;
+      const stem=`${language}-${width}-${theme}-${name}`;
       await page.screenshot({path:path.join(output,stem+'.png'),fullPage:true});
       await writeFile(path.join(output,stem+'.aria.txt'),ax);
-      report.matrix.push({width,theme,state:name,screenshot:stem+'.png',accessibility:stem+'.aria.txt',accessibleButtonCount:accessibleButtons.length,...metrics});
+      report.matrix.push({language,width,theme,state:name,screenshot:stem+'.png',accessibility:stem+'.aria.txt',accessibleButtonCount:accessibleButtons.length,...metrics});
     }
   }
 
@@ -118,7 +118,7 @@ try{
   // account flow, VS Code command, network request, or source-file edit.
   for(const mac of [true,false]){
     await page.setViewportSize({width:460,height:900});await fresh(mac);await update({});
-    assert.equal(await page.getByRole('button',{name:/수정안 만들기/}).isEnabled(),false);
+    assert.equal(await page.locator('#generate').isEnabled(),false);
     await page.getByRole('textbox',{name:'원하는 코드 변경'}).fill('  한글 요청: 음수 제외  ');
     await page.keyboard.press((mac?'Meta':'Control')+'+Enter');
     assert.deepEqual((await events()).at(-1),{command:'generate',intent:'한글 요청: 음수 제외'});
@@ -137,7 +137,7 @@ try{
     await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'generate');
     await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'demo');
     await page.keyboard.press('Tab');await page.keyboard.press('Space');assert.equal(await page.locator('#other').evaluate(e=>e.open),true);
-    for(const command of ['chooseFiles','demo','import','loadPending','mcpConfig','signIn']){
+    for(const command of ['chooseFiles','demo','import','loadPending','mcpConfig','signIn','tutorial']){
       await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);
     }
     await update({connected:true});await page.getByRole('button',{name:'모델 선택',exact:true}).click();assert.equal(await lastCommand(),'chooseModel');

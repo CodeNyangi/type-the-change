@@ -8,6 +8,6 @@ const {total}=await import(`data:text/javascript;base64,${Buffer.from(code).toSt
 let failed=0;
 for(const [input,expected]of [[[10,-5,20],30],[[-5,10,20],30],[[],0],[[-1,-2],0]]){
   const actual=total(input);
-  if(actual!==expected){failed++;console.log(`${fileURLToPath(file)}:5:1: error ${JSON.stringify(input)} → 예상 ${expected}, 실제 ${actual}`);}
+  if(actual!==expected){failed++;console.log(`${fileURLToPath(file)}:5:1: error ${JSON.stringify(input)} → expected ${expected}, got ${actual}`);}
 }
 console.log(failed?`${failed} checks failed`:'4 checks passed');process.exitCode=failed?1:0;

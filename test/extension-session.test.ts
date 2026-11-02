@@ -54,7 +54,12 @@ async function fixture(){
       async showTextDocument(document:TestDocument,options:{viewColumn:number;preserveFocus:boolean}){assert.equal(document.isClosed,false,'guidance must not focus a disposed document');await beforeShowSource?.();uiEvents.push({type:'source',...options});return {document,selection:undefined,revealRange(){}};},
       createWebviewPanel:(_type:string,_title:string,options:{viewColumn:number;preserveFocus:boolean})=>{
         uiEvents.push({type:'guide',...options});
-        return {...disposable(),viewColumn:options.viewColumn===-2?1:options.viewColumn,reveal(viewColumn:number,preserveFocus:boolean){this.viewColumn=viewColumn;uiEvents.push({type:'guide',viewColumn,preserveFocus});},onDidDispose:event,webview:{html:'',onDidReceiveMessage:event,async postMessage(state:{file?:string;busy?:boolean;type?:string}){if(!state.type)panelStates.push(state);return true;}}};
+        let receive:(message:unknown)=>void=()=>{};
+        return {...disposable(),viewColumn:options.viewColumn===-2?1:options.viewColumn,reveal(viewColumn:number,preserveFocus:boolean){this.viewColumn=viewColumn;uiEvents.push({type:'guide',viewColumn,preserveFocus});},onDidDispose:event,webview:{html:'',onDidReceiveMessage(handler:(message:unknown)=>void){receive=handler;return disposable();},async postMessage(state:{file?:string;busy?:boolean;type?:string;revision?:number;request?:number}){
+          if(!state.type){panelStates.push(state);queueMicrotask(()=>receive({command:'rendered',revision:state.revision}));}
+          else if(state.type==='focusStep')queueMicrotask(()=>receive({command:'focused',request:state.request}));
+          return true;
+        }}};
       },
     },
   };
@@ -85,7 +90,7 @@ test('starting guidance from the home panel opens source first and reveals the g
     await f.api.startPlan(f.plan,f.root);
     assert.deepEqual(f.uiEvents.map(({type,viewColumn,preserveFocus})=>({type,viewColumn,preserveFocus})),[
       {type:'source',viewColumn:1,preserveFocus:false},
-      {type:'guide',viewColumn:2,preserveFocus:false},
+      {type:'guide',viewColumn:2,preserveFocus:true},
     ]);
     await f.run('start');
     assert.equal(f.uiEvents.at(-1)?.viewColumn,2,'reopening active guidance does not keep splitting relative to the focused group');
@@ -101,7 +106,7 @@ test('prediction cannot appear or accept text before pending native focus has fi
     assert.equal(f.panelStates.at(-1)?.file,undefined);assert.equal(f.panelStates.at(-1)?.busy,true);
     await f.api.predict('too early');assert.equal(f.api.getState()?.judgment.phase,'predict');
     release();await starting;assert.equal(f.panelStates.at(-1)?.file,'a.ts');
-    assert.equal(f.uiEvents.at(-1)?.type,'guide');assert.equal(f.uiEvents.at(-1)?.preserveFocus,false,'prediction owns final focus');
+    assert.equal(f.uiEvents.at(-1)?.type,'guide');assert.equal(f.uiEvents.at(-1)?.preserveFocus,true,'reveal alone cannot steal focus before the explicit handoff');
   }finally{release();await f.close();}
 });
 

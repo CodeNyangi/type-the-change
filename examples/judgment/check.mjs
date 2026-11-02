@@ -9,5 +9,5 @@ console.log('Input:    [10, -5, 20]');
 console.log('Expected: 30');
 console.log('Actual:   ' + actual);
 console.log(actual === 30 ? 'PASS' : 'FAIL — the last price was lost');
-if(actual!==30)console.log(`${fileURLToPath(new URL('./total.js',import.meta.url))}:5:1: error [10, -5, 20] → 예상 30, 실제 ${actual}`);
+if(actual!==30)console.log(`${fileURLToPath(new URL('./total.js',import.meta.url))}:5:1: error [10, -5, 20] → expected 30, got ${actual}`);
 process.exitCode = actual === 30 ? 0 : 1;
