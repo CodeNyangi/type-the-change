@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "version": "0.6.1",
+  "publisher": "CodeNyangi",
+  "name": "type-the-change",
+  "sourceCommit": null,
+  "sourceBase": "004b5b6d1af681491976a1e69880f7d427f9576f",
+  "sourceState": "uncommitted at packaging; exact source commit not recorded",
+  "sha256": "e03549606d8b99b7d0f769c925cc94791b560d2ae4131eaa14f53d0c46f38809",
+  "bytes": 278096,
+  "publishedAt": "2026-11-02T03:57:28.743Z",
+  "verifiedAt": "2026-11-02T07:38:45.015329+00:00",
+  "url": "https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change"
+}
