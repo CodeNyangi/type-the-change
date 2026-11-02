@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import readline from 'node:readline';
 if(process.argv.includes('--version')){console.log('codex-cli 0.166.0');process.exit(0);}
+if(process.argv[2]==='queue'){process.stderr.write("unrecognized subcommand 'queue'\n");process.exit(2);}
 if(process.argv.includes('proxy')&&!process.env.TTC_OBSERVER_SHARED)process.exit(1);
 const send=message=>process.stdout.write(JSON.stringify(message)+'\n');
-const thread={id:'chat-one',name:'Existing Codex chat',cwd:process.cwd(),updatedAt:1,status:{type:process.env.TTC_OBSERVER_SHARED?'active':'notLoaded'}};
+const thread={id:process.env.TTC_OBSERVER_THREAD_ID||'chat-one',name:'Existing Codex chat',cwd:process.cwd(),updatedAt:1,status:{type:process.env.TTC_OBSERVER_SHARED?'active':'notLoaded'}};
 for await(const line of readline.createInterface({input:process.stdin})){
  const m=JSON.parse(line);if(m.method==='initialized')continue;
  if(m.method==='initialize')send({id:m.id,result:{}});

@@ -2,7 +2,7 @@
   "name": "type-the-change",
   "displayName": "Type the Change",
   "description": "%description%",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",

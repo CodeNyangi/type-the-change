@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1 — 2026-11-02
+
+- Remove repeated empty-screen instructions and the primary explanation-request button. Existing explanations appear directly; optional requests have a named target and a separate send confirmation.
+- Fix primary-button hover contrast. History loading no longer disables request review; pending sends show their status. Reject stale chat targets and report missing acknowledgements without automatic retries.
+- Remove the misleading “Understand another change” action that sent a new prompt, and open code comparisons directly.
+- Verify pointer hover, review/cancel, browser-to-command routing, exact original-chat links and pinned read-only comparisons. New live messages remain excluded at the user's request.
+
 ## 0.8.0 — 2026-11-02
 
 - Replace transcript and file-oriented learning with one explicit Codex-authored learning card: the reason for a change and its key code, visible immediately without a quiz.

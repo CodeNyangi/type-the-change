@@ -81,8 +81,8 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
   const doc=vscode.workspace.textDocuments.find(d=>d.uri.toString()===practice!.uri);if(!doc)return;
   await vscode.commands.executeCommand('vscode.diff',virtual('your-code.txt',doc.getText()),virtual('codex-code.txt',h.after),t('내 코드 ↔ Codex 변경','My code ↔ Codex change'),{preview:false,viewColumn:vscode.ViewColumn.One});
  }
- async function prepareLesson(){
-  trusted();const id=model.state.selected?.id;if(!id||!model.canRequest(id))return;
+ async function prepareLesson(value?:{id?:string}){
+  trusted();const id=model.state.selected?.id;if(!id||value?.id!==id)throw Error(t('선택한 채팅이 바뀌었습니다. 요청을 다시 열어 주세요.','The selected chat changed. Open the request again.'));if(!model.canRequest(id))return;
   const requestId=randomUUID();model.requestState(id,'sending',requestId);
   try{
    const command=await findCodex(vscode.workspace.getConfiguration('typeTheChange').get<string>('codexPath'));
