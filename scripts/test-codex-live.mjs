@@ -1,8 +1,10 @@
+import {readFileSync as readManifestFile} from 'node:fs';
+const packageVersion=JSON.parse(readManifestFile(new URL('../package.json',import.meta.url),'utf8')).version;
 // Read-only smoke test of an EXISTING Codex chat. Never starts or resumes a turn.
 import {writeFile,mkdir} from 'node:fs/promises';
 import {CodexObserver,findCodex,threadSummary,activityItem} from '../src/codex-observer.ts';
 const id=process.argv[2];if(!id||!/^[a-zA-Z0-9_-]+$/.test(id))throw Error('Pass an existing Codex thread ID');
-const c=new CodexObserver({command:await findCodex(),cwd:process.cwd(),version:'0.7.0'}),calls=[];
+const c=new CodexObserver({command:await findCodex(),cwd:process.cwd(),version:packageVersion}),calls=[];
 const read=async(method,params)=>{calls.push(method);return c.read(method,params);};
 try{
  const listed=await read('thread/list',{limit:5,searchTerm:process.argv[3]||undefined,useStateDbOnly:true});

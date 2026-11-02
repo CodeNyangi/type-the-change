@@ -24,6 +24,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run release:check
       - run: npm run check
       - run: npm test
       - run: npm run build
@@ -52,6 +53,10 @@ jobs:
         run: npx playwright install --with-deps chromium --only-shell
       - name: Verify webview layouts and keyboard interactions
         run: npm run test:ui:webview
+      - name: Verify Codex companion layouts
+        run: npm run test:ui:companion
+      - name: Verify native staged and unstaged editor comparisons
+        run: xvfb-run -a npm run test:editor
       - name: Exercise real VS Code UI in a virtual display
         run: xvfb-run -a -s '-screen 0 1440x1000x24' npm run test:ui:vscode
       - name: Install tutorial recorder and Korean fonts
@@ -67,13 +72,15 @@ jobs:
             artifacts/vscode-ui/
             artifacts/headless-webview/
             artifacts/tutorial/
+            artifacts/companion-ui/
+            artifacts/real-companion/editor-follow.json
 
   minimum:
     name: Minimum VS Code
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      TTC_VSCODE_VERSION: 1.100.0
+      TTC_VSCODE_VERSION: minimum
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -101,6 +108,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run release:check
       - run: npm run check
       - run: npm test
 

@@ -2,7 +2,7 @@
 
 Type the Change has no application backend, analytics, advertising, or telemetry of its own.
 
-## Existing Codex chats (0.7.0)
+## Existing Codex chats (0.7+)
 
 TTC reads existing chats through the installed Codex app-server protocol. It first attempts a connection to an existing shared server; otherwise it starts only a local history-query transport. Its request allowlist contains initialization and thread list/read/turn/item/loaded-list operations. It never starts, resumes, forks, steers or interrupts a thread, runs model requests, selects a model, logs in, reads credential files or stores Codex tokens. Codex remains the owner of conversations, long-term memory, work and provider access. There is no direct OpenAI API request in the extension bundle.
 

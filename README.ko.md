@@ -4,6 +4,8 @@
 
 VS Code 소스 제어에서 변경을 열면 TTC가 그 코드를 따라갑니다. 관련 Codex 대화를 읽고, 짧은 수정은 별도 문서에서 직접 바꿔 보며 익힙니다.
 
+**변경 비교는 VS Code, 작업은 Codex, 코드와 원래 설명을 연결하고 직접 연습하는 곳은 TTC입니다.**
+
 [설치](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [English](README.md)
 
 [![수정하고 검사하는 흐름](assets/quickstart.gif)](assets/type-the-change-quickstart.mp4)
@@ -39,6 +41,8 @@ Codex의 기존 공유 연결이 있으면 실제 실행 상태를 읽습니다.
 
 **미리보기 · VS Code 1.106+ · 신뢰한 로컬 프로젝트 · 설치된 Codex 필요.** 텍스트 비교는 UTF-8 파일당 1 MiB까지 지원하며 보호 경로·심볼릭 링크·바이너리는 제외합니다. 원격·클라우드 워크트리를 무관한 로컬 경로와 연결하지 않습니다.
 
-[자세한 사용법](docs/guide.ko.md) · [검증](docs/verification-0.7.0.md) · [개인정보](PRIVACY.md) · [보안](SECURITY.md) · [MIT](LICENSE)
+[자세한 사용법](docs/guide.ko.md) · [검증](docs/verification-0.7.1.md) · [개인정보](PRIVACY.md) · [보안](SECURITY.md) · [MIT](LICENSE)
+
+개발·유지보수: [코드 구조](docs/architecture.md) · [버전과 배포 관리](docs/marketplace.md). 공개 패키지의 해시와 소스 기준점은 `releases/`에 기록합니다.
 
 기여는 [이슈](https://github.com/CodeNyangi/type-the-change/issues/new/choose)로 받습니다. 외부 PR은 받지 않으며 최종 검토는 저장소 소유자가 합니다. [기여 정책](CONTRIBUTING.md)

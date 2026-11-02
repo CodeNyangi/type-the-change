@@ -4,6 +4,8 @@
 
 Open a change in VS Code Source Control and TTC follows the code in your editor. Read its related Codex conversation, then try a short change in a separate document.
 
+**VS Code shows the diff. Codex does the work. TTC connects the code to its original explanation and a short practice.**
+
 [Install](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [한국어](README.ko.md)
 
 [![Editing and checking walkthrough](assets/quickstart.gif)](assets/type-the-change-quickstart.mp4)
@@ -39,6 +41,8 @@ Learning captures a specific version. Later file changes or commits mark it stal
 
 **Preview · VS Code 1.106+ · Trusted local projects · Installed Codex required.** UTF-8 text comparisons support up to 1 MiB per file. Protected paths, symlinks and binary files are excluded. Remote/cloud worktrees are not mapped to unrelated local paths.
 
-[Guide](docs/guide.md) · [Verification](docs/verification-0.7.0.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [MIT](LICENSE)
+[Guide](docs/guide.md) · [Verification](docs/verification-0.7.1.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [MIT](LICENSE)
+
+Maintainers: [code map](docs/architecture.md) · [versioning and releases](docs/marketplace.md). Published package hashes and source references are recorded in `releases/`.
 
 Contribute through [issues](https://github.com/CodeNyangi/type-the-change/issues/new/choose). External PRs are not accepted; the repository owner performs the final review. [Contributing](CONTRIBUTING.md)

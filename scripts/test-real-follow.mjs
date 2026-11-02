@@ -1,10 +1,12 @@
+import {readFileSync as readManifestFile} from 'node:fs';
+const packageVersion=JSON.parse(readManifestFile(new URL('../package.json',import.meta.url),'utf8')).version;
 import assert from 'node:assert/strict';
 import {writeFile} from 'node:fs/promises';
 import {Companion} from '../src/companion.ts';
 import {CodexObserver,findCodex} from '../src/codex-observer.ts';
 const id=process.argv[2];if(!id)throw Error('Existing thread ID required');
 const command=await findCodex();let scans=0;
-const model=new Companion(async()=>new CodexObserver({command,cwd:process.cwd(),version:'0.7.0'}),()=>{});
+const model=new Companion(async()=>new CodexObserver({command,cwd:process.cwd(),version:packageVersion}),()=>{});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 try{
  model.select(id);const deadline=Date.now()+15000;while(!model.state.tree&&!model.state.error&&Date.now()<deadline)await sleep(50);assert.ok(model.state.tree,'linked real worktree');

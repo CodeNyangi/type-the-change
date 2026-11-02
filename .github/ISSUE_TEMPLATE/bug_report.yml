@@ -16,7 +16,7 @@ body:
     attributes:
       label: Extension version / 확장 버전
       description: Find Type the Change in VS Code's Extensions view. / 확장 목록에서 Type the Change의 버전을 확인해 주세요.
-      placeholder: "0.2.0, or a development commit / 개발 버전은 커밋"
+      placeholder: "Installed version and source commit / 설치 버전과 개발 커밋"
     validations:
       required: true
   - type: input
@@ -38,17 +38,17 @@ body:
       label: Affected flow / 문제가 생긴 흐름
       options:
         - Demo or JSON import / 데모 또는 JSON 가져오기
-        - ChatGPT connection or generation / ChatGPT 연결 또는 생성
+        - Codex chats or live progress / Codex 채팅 또는 진행 상태
         - MCP connection / MCP 연결
-        - Typing or reviewing / 코드 입력 또는 변경 검토
+        - Editor follow, worktrees or practice / 편집기 연동·워크트리·실습
         - Not sure / 잘 모르겠어요
     validations:
       required: true
   - type: input
     id: model_or_client
     attributes:
-      label: Model or MCP client, if relevant / 관련 모델 또는 MCP 클라이언트
-      description: Optional. Include the model name or MCP client and version when the problem involves them. / 관련된 경우에만 모델명이나 MCP 클라이언트·버전을 적어 주세요.
+      label: Codex or MCP client version / Codex 또는 MCP 클라이언트 버전
+      description: Optional. Include the installed Codex or MCP client version. / 관련된 경우 설치된 Codex 또는 MCP 클라이언트의 버전을 적어 주세요.
   - type: textarea
     id: actual
     attributes:

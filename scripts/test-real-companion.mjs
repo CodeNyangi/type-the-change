@@ -1,3 +1,5 @@
+import {readFileSync as readManifestFile} from 'node:fs';
+const packageVersion=JSON.parse(readManifestFile(new URL('../package.json',import.meta.url),'utf8')).version;
 // Uses a real existing chat through the production observer/controller/view.
 // No generated fixtures, model requests, source edits, or persisted chat cache.
 import assert from 'node:assert/strict';
@@ -14,7 +16,7 @@ const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_EXEC
 const page=await browser.newPage({viewport:{width:480,height:1100}});page.on('pageerror',e=>errors.push(e.message));
 let ready=false,updates=Promise.resolve(),firstUpdate=0;
 const model=new Companion(async()=>{
- const client=new CodexObserver({command,cwd:process.cwd(),version:'0.7.0'}),read=client.read.bind(client);
+ const client=new CodexObserver({command,cwd:process.cwd(),version:packageVersion}),read=client.read.bind(client);
  client.read=(method,params)=>{calls.push(method);return read(method,params);};return client;
 },state=>{if(ready){const display=companionDisplay(state);updates=updates.then(()=>page.evaluate(s=>window.dispatchEvent(new MessageEvent('message',{data:{companion:s}})),display));}});
 const wait=async(check,label,ms=20000)=>{const until=Date.now()+ms;while(!check()&&Date.now()<until)await new Promise(r=>setTimeout(r,50));assert.ok(check(),label+': '+(model.state.error||''));await updates;};

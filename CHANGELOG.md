@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.7.0
+## 0.7.1 — 2026-11-02
+
+- Remove unused independent ChatGPT login, model inference and account-lock code; retain Codex as the only agent owner.
+- Align English/Korean listing, optional lesson help, and Marketplace maintenance documentation with the observer workflow.
+- Add clean-source release checks, exact version/locale validation, tested-bundle and VSIX allowlist checks, and public-package hash recording.
+- Run companion rendering and native staged/unstaged editor checks in CI; derive the minimum VS Code test version from the manifest.
+- Preserve existing Git history, record the 0.7.0 source snapshot, and distinguish older artifact-only releases from source-tagged releases.
+
+## 0.7.0 — 2026-11-02
 
 - Follow existing Codex chats through paginated read-only APIs; remove TTC agent execution, independent requests, model selection and login from the extension.
 - Distinguish saved history from live runtime status. Support an existing shared Codex server and optional trusted Codex lifecycle notifications, with no conversation-memory store.
@@ -12,7 +20,7 @@
 - Keep the movable right-sidebar default, Korean/English UI, existing walkthrough media and optional imported-plan workflow.
 
 
-## 0.6.1 — local preview
+## 0.6.1 — 2026-11-02 (published preview)
 
 - Default to the Secondary Side Bar and add a visible Move view action. Native drag-and-drop and saved view locations remain available. Requires VS Code 1.106+.
 - Keep chat and learning in one movable view beside the code, with Chat / Learn switching that preserves the learning step.

@@ -2,7 +2,7 @@
   "name": "type-the-change",
   "displayName": "Type the Change",
   "description": "%description%",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
@@ -15,11 +15,11 @@
     "Other"
   ],
   "keywords": [
-    "ai-assisted-coding",
-    "deliberate-practice",
+    "codex",
+    "code-learning",
     "code-review",
-    "mcp",
-    "chatgpt"
+    "worktrees",
+    "deliberate-practice"
   ],
   "repository": {
     "type": "git",
@@ -236,13 +236,19 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts test/*.test.mjs",
     "test:host": "node scripts/test-host.mjs",
     "test:ui:vscode": "node scripts/test-vscode-ui.mjs",
     "test:ui:webview": "node --import tsx scripts/test-webview-headless.mjs",
     "package": "npm run build && node scripts/package.mjs",
     "vscode:prepublish": "npm run build",
-    "preview": "node --import tsx scripts/preview.ts"
+    "preview": "node --import tsx scripts/preview.ts",
+    "test:ui:companion": "node --import tsx scripts/test-companion-webview.mjs",
+    "test:editor": "node scripts/test-editor-follow-host.mjs",
+    "release:check": "node scripts/release.mjs check",
+    "release:verify": "node scripts/release.mjs verify",
+    "release:record": "node scripts/release.mjs record",
+    "package:marketplace": "node scripts/package.mjs --marketplace"
   },
   "overrides": {
     "@vscode/vsce": {
@@ -251,7 +257,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.4.0",
-    "jose": "6.2.14",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -265,7 +270,8 @@
     "jsdom": "^29.1.1",
     "playwright": "1.64.1",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "yauzl": "3.4.0"
   },
   "icon": "assets/icon.png",
   "preview": true,
