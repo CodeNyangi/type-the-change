@@ -107,7 +107,7 @@ try {
   ]}));
   const executablePath = await downloadAndUnzipVSCode('1.142.0');
   const env = {...process.env};
-  delete env.ELECTRON_RUN_AS_NODE;env.TTC_OBSERVER_WORKTREE=workspace;
+  delete env.ELECTRON_RUN_AS_NODE;env.TTC_OBSERVER_WORKTREE=workspace;env.TTC_OBSERVER_THREAD_ID='11111111-1111-4111-8111-111111111111';
   app = await electron.launch({executablePath, env, timeout: 60_000, args: [
     workspace, `--user-data-dir=${profile}`, `--extensions-dir=${path.join(root, 'extensions')}`,
     `--extensionDevelopmentPath=${process.cwd()}`, '--disable-workspace-trust',
@@ -132,11 +132,20 @@ try {
   await textIs(view,'#explanation','내보내는 상수가 1에서 2로 바뀌었습니다.');
   assert.equal(await view.locator('#choices,#question,#answer,#activity-list').count(),0);
   await view.locator('#codex').waitFor({state:'visible'});
-  await view.locator('#lesson-source > summary').click();await view.locator('#open-diff').click();
+  await view.locator('#open-diff').click();
   await page.locator('.monaco-diff-editor').first().waitFor({state:'visible'});
   assert.equal(await readFile(path.join(workspace,'source.ts'),'utf8'),'export const value = 2;\n');
   report.checks.push('A Codex-authored explanation is immediately visible without a quiz; its recorded code opens as an immutable comparison.');
   await page.screenshot({path:path.join(artifacts,'codex-explanation.png')});
+  await view.locator('#settings-toggle').click();await view.locator('#prepare').click();
+  await textIs(view,'#request-target','Existing Codex chat');assert.equal(await view.locator('#request-confirm').isEnabled(),true);
+  await view.locator('#request-confirm').hover();assert.equal(await view.locator('#request-confirm').isEnabled(),true);
+  await view.locator('#request-cancel').click();assert.equal(await view.locator('#request-sheet').isVisible(),false);
+  await view.locator('#settings-toggle').click();await view.locator('#prepare').click();await view.locator('#request-confirm').click();
+  await textIs(view,'#request-status','Update Codex to send this request.');assert.equal(await view.locator('#request-confirm').isEnabled(),true);
+  await view.locator('#request-cancel').click();assert.equal(await view.locator('#lesson').isVisible(),true);
+  report.checks.push('Explanation requests open a named review before sending. Cancel returns to existing content. The real UI-to-host-to-CLI boundary reports an unsupported fixture command without hanging or disabling retry. No live chat message is sent.');
+
 
   await app.evaluate(({dialog}, file) => {
     dialog.showOpenDialog = async () => ({canceled: false, filePaths: [file]});
