@@ -102,7 +102,7 @@ export function activate(context:vscode.ExtensionContext){
   }
   function render(){
     const workspace=workspaceOverview?summarizeWorkspace(workspaceOverview,(vscode.workspace.textDocuments||[]).filter(document=>document.isDirty&&document.uri.scheme==='file').map(document=>document.uri.fsPath)):undefined;
-    const common:PanelState={workspace,companion:{...companionDisplay(companion.model.state),...(composer.error?{error:composer.error}:{})},project:currentProject()?.name,busy,phase:composer.phase,error:composer.error,errorAction:composer.errorAction,notice:composer.notice};
+    const common:PanelState={workspace,companion:{...companionDisplay(companion.model.state,(vscode.workspace.workspaceFolders||[]).map(folder=>folder.uri.fsPath)),...(composer.error?{error:composer.error}:{})},project:currentProject()?.name,busy,phase:composer.phase,error:composer.error,errorAction:composer.errorAction,notice:composer.notice};
     if(!session){panel.update(common);return;}
     if(!session.ready){panel.update({...common,busy:true,phase:t('변경 여는 중','Opening change')});return;}
     const s=session,step=s.plan.steps[s.index],inspection=inspectSession(s);

@@ -14,6 +14,10 @@ export async function run(){
  await vscode.commands.executeCommand('typeTheChange.start');
  await vscode.commands.executeCommand('typeTheChange.selectChat',{id});
  await wait(()=>model.state.selected?.id===id&&!!model.state.tree);
+ await vscode.commands.executeCommand('typeTheChange.learnLatest');
+ assert.ok(model.state.review?.recorded,'task entry selects an original recorded edit');
+ assert.equal(model.state.reviewOpened,true,'one task action opens its native diff');
+ const taskEntryFile=model.state.review!.file;
  // A real source editor, including the native SCM diff's modified side,
  // should drive TTC without a second file picker.
  const initialRoot=model.state.root!;
@@ -48,7 +52,7 @@ export async function run(){
  const practiceIndex=model.state.review!.hunks.findIndex(canPractice);assert.ok(practiceIndex>=0,'choose a genuinely small historical change for practice');
  await vscode.commands.executeCommand('typeTheChange.hunk',{index:practiceIndex});
  await vscode.commands.executeCommand('typeTheChange.openReviewDiff');
- const diff=vscode.window.tabGroups.all.flatMap(g=>g.tabs).find(tab=>tab.input instanceof vscode.TabInputTextDiff&&tab.input.original.scheme==='ttc-codex-review');assert.ok(diff);
+ const diff=vscode.window.tabGroups.activeTabGroup.activeTab;assert.ok(diff?.input instanceof vscode.TabInputTextDiff&&diff.input.original.scheme==='ttc-codex-review');
  const input=diff.input as vscode.TabInputTextDiff,hunk=model.state.review!.hunks[practiceIndex];
  assert.equal(model.state.reviewOpened,true);
  assert.equal((await vscode.workspace.openTextDocument(input.original)).getText(),hunk.before);
@@ -70,7 +74,7 @@ export async function run(){
  const found=current.indexOf(needle),located=!!needle.trim()&&found>=0&&current.indexOf(needle,found+1)<0;
  if(located)assert.ok(current.split('\n').slice(sourceLine).join('\n').startsWith(needle),'source selection points at the actual recorded code, even when it moved');
  else assert.equal(sourceLine,0,'missing historical code opens at the beginning with a notice instead of an unrelated clamped line');
- const report={checkedAt:new Date().toISOString(),threadId:id,title:model.state.selected!.title,extension:extension.extensionPath,version:extension.packageJSON.version,worktree:model.state.root,file,followedFile,editorFollowVerified,outsideWorktreeVerified,diffIsReadOnly:true,originalRequestVerified:true,originalResponseVerified:true,practiceDocument:'untitled',practiceLanguage:'plaintext',practiceMatched:true,practiceComparisonVerified:true,originalFileUnchanged:true,sourceLocationOpened:true,sourceLine:sourceLine+1,historicalCodeLocated:located,keyboardTypingTested:false};
+ const report={checkedAt:new Date().toISOString(),threadId:id,title:model.state.selected!.title,extension:extension.extensionPath,version:extension.packageJSON.version,worktree:model.state.root,file,taskEntryFile,taskEntryOpenedDiff:true,followedFile,editorFollowVerified,outsideWorktreeVerified,diffIsReadOnly:true,originalRequestVerified:true,originalResponseVerified:true,practiceDocument:'untitled',practiceLanguage:'plaintext',practiceMatched:true,practiceComparisonVerified:true,originalFileUnchanged:true,sourceLocationOpened:true,sourceLine:sourceLine+1,historicalCodeLocated:located,keyboardTypingTested:false};
  await mkdir(output,{recursive:true});await writeFile(path.join(output,'native-host.json'),JSON.stringify(report,null,2)+'\n');console.log('REAL COMPANION HOST PASSED '+JSON.stringify(report));
  model.track(false);
 }

@@ -75,11 +75,11 @@ export class CodexObserver {
  async read(method:string,params:Json={}){if(method==='initialize'||!OBSERVER_METHODS.has(method))throw new Error('Observer method not allowed');await this.start();return this.rpc(method,params);}
  dispose(){this.closed=true;this.close();}
 }
-export interface CodexThread {id:string;title:string;cwd:string;updatedAt:number;runtime:string;flags:string[];source?:string}
+export interface CodexThread {id:string;title:string;cwd:string;updatedAt:number;runtime:string;flags:string[];source?:string;preview?:string}
 export interface ActivityItem {id:string;turnId?:string;kind:'user'|'assistant'|'command'|'change'|'plan';text:string;cwd?:string;paths?:string[];diffs?:{path:string;diff:string}[];status?:string}
 export function threadSummary(raw:Json):CodexThread|undefined {
  if(typeof raw.id!=='string'||typeof raw.cwd!=='string')return;
- return {id:raw.id,title:String(raw.name||raw.preview||raw.id).slice(0,250),cwd:raw.cwd,updatedAt:Number(raw.updatedAt)||0,runtime:raw.status?.type||'notLoaded',flags:Array.isArray(raw.status?.activeFlags)?raw.status.activeFlags:[],source:typeof raw.source==='string'?raw.source:undefined};
+ return {id:raw.id,title:String(raw.name||raw.preview||raw.id).slice(0,250),cwd:raw.cwd,updatedAt:Number(raw.updatedAt)||0,runtime:raw.status?.type||'notLoaded',flags:Array.isArray(raw.status?.activeFlags)?raw.status.activeFlags:[],source:typeof raw.source==='string'?raw.source:undefined,preview:typeof raw.preview==='string'?raw.preview.slice(0,1000):undefined};
 }
 export function activityItem(raw:Json):ActivityItem|undefined {
  const item=raw.item??raw;if(typeof item.id!=='string')return;

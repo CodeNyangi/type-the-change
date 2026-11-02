@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.2 — 2026-11-02
+
+- Start with five recent Codex tasks for the current project; expand or search other projects on demand.
+- Show a compact latest request and Codex progress, with the original transcript collapsed and rendered only when opened.
+- Open an actual source edit from the selected task with one action; skip generated artifacts, tests and prose when choosing code to study.
+- Hide unrelated editor files from learning, retrieve context near the specific edit and clean escaped text/link-only excerpts.
+- Keep short code practice optional; documentation changes are not typing exercises.
+
 ## 0.7.1 — 2026-11-02
 
 - Remove unused independent ChatGPT login, model inference and account-lock code; retain Codex as the only agent owner.

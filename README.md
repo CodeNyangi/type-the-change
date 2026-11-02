@@ -2,7 +2,7 @@
 
 **Follow your Codex work. Learn from the code that changes.**
 
-Open a change in VS Code Source Control and TTC follows the code in your editor. Read its related Codex conversation, then try a short change in a separate document.
+Choose a Codex task in the current project, read its latest request and progress, then select **Explore this task’s code** to open an actual edit with its original Codex context.
 
 **VS Code shows the diff. Codex does the work. TTC connects the code to its original explanation and a short practice.**
 
@@ -15,9 +15,9 @@ Open a change in VS Code Source Control and TTC follows the code in your editor.
 ## Start
 
 1. Open **Type the Change** in the right sidebar, or press **Cmd/Ctrl+Alt+T**.
-2. Select an existing **Codex chat**. Continue requests and conversation in that original chat.
-3. Open a change in **VS Code Source Control**. TTC’s **Code in view** follows the file and comparison section.
-4. Read the related Codex context. For short changes, **Try this change** opens a separate practice document.
+2. Choose one of the project’s five recent Codex tasks. Use **More tasks** or **Other projects** when needed.
+3. Read **Latest request** and **Codex progress**, then choose **Explore this task’s code**. No file selection is required.
+4. Compare the edit in the native editor and read its original Codex context. **Original conversation** expands the transcript; **Try this change** is optional for short source edits.
 
 Codex owns the agent, conversation, memory, plans, execution and worktrees. TTC has no model picker, independent login, request composer or agent loop. It never starts, resumes, steers or stops Codex work. **Continue in Codex** opens the original chat.
 
@@ -27,7 +27,7 @@ Saved chat history refreshes while this view is visible. It is paginated and onl
 
 If Codex exposes an existing shared app-server connection, TTC reads its current status. Otherwise, **Connect live notifications** prepares official Codex lifecycle hooks. Review the settings, then review and trust the exact hook definitions with **`/hooks` in Codex** before continuing your original chat. Hook notifications contain event/time/directory metadata only and disappear when TTC closes. This notification relay supports macOS and Linux. Saved-history viewing does not require hooks.
 
-Worktree linking uses the chat directory and observed activity, checked against Git's registered worktrees. Ambiguous locations require a choice. File lists and comparisons use native VS Code Source Control. A file from another worktree is identified without silently switching chats. Staged and unstaged diffs follow the exact documents open in the editor. Expand **Past Codex edits** to see history after a commit.
+Worktree linking uses the chat directory and observed activity, checked against Git's registered worktrees. Ambiguous locations require a choice. File lists and comparisons use native VS Code Source Control. Unrelated editor files stay out of learning without silently switching chats. Staged and unstaged diffs follow the exact documents open in the editor. Expand **Past Codex edits** to see history after a commit.
 
 Learning captures a specific version. Later file changes or commits mark it stale without replacing it. Practice never rewinds or overwrites Codex's working file. Matching text is feedback, not proof of understanding or correctness.
 
@@ -41,7 +41,7 @@ Learning captures a specific version. Later file changes or commits mark it stal
 
 **Preview · VS Code 1.106+ · Trusted local projects · Installed Codex required.** UTF-8 text comparisons support up to 1 MiB per file. Protected paths, symlinks and binary files are excluded. Remote/cloud worktrees are not mapped to unrelated local paths.
 
-[Guide](docs/guide.md) · [Verification](docs/verification-0.7.1.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [MIT](LICENSE)
+[Guide](docs/guide.md) · [Verification](docs/verification-0.7.2.md) · [Privacy](PRIVACY.md) · [Security](SECURITY.md) · [MIT](LICENSE)
 
 Maintainers: [code map](docs/architecture.md) · [versioning and releases](docs/marketplace.md). Published package hashes and source references are recorded in `releases/`.
 

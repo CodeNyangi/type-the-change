@@ -9,6 +9,7 @@ import {mergeHooks} from './codex-events.js';
 import {readWorkspaceFile} from './workspace-files.js';
 import {locateHunk,canPractice} from './change-review.js';
 import {text as t} from './locale.js';
+import {isLearningCode} from './learning-context.js';
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
 export function createCompanion(context:vscode.ExtensionContext,render:()=>void){
  let followTimer:NodeJS.Timeout|undefined,followSelection=false,followRevision=0;
@@ -27,6 +28,9 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
   followTimer=setTimeout(async()=>{
    const move=followSelection;followSelection=false;
    if(!vscode.workspace.isTrusted||vscode.env.remoteName)return;
+   // Metadata refreshes must not replace a lesson explicitly opened by the
+   // person. Actual editor navigation still follows the new selection.
+   if(!move&&(model.state.review||model.state.learningSearch==='searching'))return;
    const active=vscode.window.activeTextEditor;
    // Practice and pinned read-only comparisons must not replace their review.
    if(!active||['untitled','ttc-codex-review'].includes(active.document.uri.scheme))return;
@@ -54,6 +58,7 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
  if(vscode.window.onDidChangeTextEditorSelection)context.subscriptions.push(vscode.window.onDidChangeTextEditorSelection(()=>scheduleFollow(true)));
  context.subscriptions.push({dispose:()=>clearTimeout(followTimer)});
  function trusted(){if(!vscode.workspace.isTrusted||vscode.env.remoteName)throw Error(t('로컬의 신뢰한 작업공간에서 Codex를 연결하세요.','Connect Codex from a trusted local workspace.'));}
+ async function pinReview(action:()=>Promise<unknown>){clearTimeout(followTimer);followRevision++;followSelection=false;return action();}
  async function select(id:string){trusted();model.select(id);await context.workspaceState.update('companion.selected',id);}
  function virtual(name:string,text:string){const uri=vscode.Uri.from({scheme:'ttc-codex-review',path:'/'+randomUUID()+'/'+name});snapshots.set(uri.toString(),text);while(snapshots.size>20)snapshots.delete(snapshots.keys().next().value!);return uri;}
  async function openDiff(){const r=model.state.review;if(!r)return;const h=r.hunks[model.state.hunk];
@@ -61,7 +66,7 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
   await vscode.commands.executeCommand('vscode.diff',virtual('before/'+r.file,before),virtual('after/'+r.file,after),r.file+' · '+(r.recorded?t('Codex 수정 기록 (발췌)','Codex recorded edit (excerpt)'):t('변경 시점 비교','Change snapshot')),{preview:false,viewColumn:vscode.ViewColumn.One});
   if(model.state.review===r)model.compared();
  }
- async function practiceChange(){const r=model.state.review,h=r?.hunks[model.state.hunk];if(!r||!h||r.stale||!canPractice(h))return;
+ async function practiceChange(){const r=model.state.review,h=r?.hunks[model.state.hunk];if(!r||!h||r.stale||!isLearningCode(r.file)||!canPractice(h))return;
   // Excerpts are not complete programs. Plain text avoids misleading language
   // errors and project tooling in a short, disposable exercise.
   const document=await vscode.workspace.openTextDocument({content:h.before,language:'plaintext'});
@@ -104,10 +109,11 @@ export function createCompanion(context:vscode.ExtensionContext,render:()=>void)
  }
  const commands:Record<string,(value:any)=>unknown>={
   selectChat:(v)=>typeof v?.id==='string'?select(v.id):undefined,refreshChats:()=>model.refreshChats(),moreChats:()=>model.listMore(),olderActivity:()=>model.older(),olderEdits:()=>model.olderEdits(),
+  learnLatest:async()=>pinReview(async()=>{if(await model.learnLatest())await openDiff();}),
   openCodexThread:async()=>{const id=model.state.selected?.id;if(id)await vscode.env.openExternal(vscode.Uri.parse('codex://threads/'+encodeURIComponent(id)));},
   pickWorktree:async()=>{const picked=await vscode.window.showQuickPick(model.state.roots.filter(r=>!r.unavailable).map(r=>({label:r.branch||r.head.slice(0,8),description:r.path,root:r.path})),{title:t('이 채팅과 함께 볼 작업공간','Worktree to inspect with this chat')});if(picked)model.chooseRoot(picked.root);},
-  openChange:v=>typeof v?.file==='string'?model.reviewFile(v.file):undefined,
-  reviewRecorded:v=>typeof v?.id==='string'&&typeof v?.file==='string'?model.reviewRecorded(v.id,v.file):undefined,
+  openChange:v=>typeof v?.file==='string'?pinReview(()=>model.reviewFile(v.file)):undefined,
+  reviewRecorded:v=>typeof v?.id==='string'&&typeof v?.file==='string'?pinReview(()=>model.reviewRecorded(v.id,v.file)):undefined,
   hunk:v=>model.hunk(v?.index),clearReview:()=>model.clearReview(),followEditor:async()=>{if(vscode.window.activeTextEditor?.document.uri.scheme!=='file')await source();model.followAgain();scheduleFollow(true);},openSourceControl:()=>vscode.commands.executeCommand('workbench.view.scm'),openReviewDiff:openDiff,practiceChange,comparePractice,openReviewSource:source,setupLive,
  };
  const saved=context.workspaceState?.get<string>('companion.selected');

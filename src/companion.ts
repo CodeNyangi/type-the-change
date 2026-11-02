@@ -4,12 +4,15 @@ import {CodexObserver,ObserverError,threadSummary,activityItem,type CodexThread,
 import {CodexEvents,type CodexEvent} from './codex-events.js';
 import {git,parseWorktrees,readWorktree,type Worktree,type GitRunner} from './worktrees.js';
 import {loadChange,parseHunks,hunkAtLine,type ChangeReview,type EditorComparison} from './change-review.js';
+import {editContext,isLearningCode} from './learning-context.js';
 export interface CompanionState {
  threads:CodexThread[];selected?:CodexThread;items:ActivityItem[];mode:'connecting'|'history'|'shared';
  loading:boolean;error?:string;updatedAt?:number;live?:CodexEvent;nextThreads?:string;nextItems?:string;gap?:boolean;
  roots:Worktree[];root?:string;rootSource?:'chat'|'activity'|'choice';ambiguous?:boolean;tree?:Worktree;worktreeError?:boolean;
  review?:ChangeReview;hunk:number;practice?:'editing'|'matched'|'different';hooks?:'ready'|'review';
- reviewContext?:{turnId:string;request?:string;response?:string;loading:boolean};
+ reviewContext?:{turnId:string;request?:string;response?:string;nearby?:string;loading:boolean};
+ learningSearch?:'searching'|'empty';
+ taskRequest?:string;
  editHistory?:ActivityItem[];editsLoaded?:boolean;editsLoading?:boolean;nextEdits?:string;editsError?:boolean;
  editor?:{file:string;outside:boolean;error?:boolean};reviewOpened?:boolean;
 }
@@ -37,7 +40,7 @@ export class Companion {
  readonly events:CodexEvents;
  private client?:CodexObserver;private epoch=0;private timer?:NodeJS.Timeout;private visible=false;private running=false;private again=false;private disposed=false;
  private selected?:string;private manual?:string;private listAt=0;private rootAt=0;private itemIds=new Set<string>();private reviewEpoch=0;
- private legacyHistory=false;private editsEpoch=0;private followKey='';private followEpoch=0;private comparisonKey?:string;
+ private legacyHistory=false;private taskRead=false;private editsEpoch=0;private followKey='';private followEpoch=0;private comparisonKey?:string;
  constructor(private factory:()=>Promise<CodexObserver>,private changed:(state:CompanionState)=>void,private run:GitRunner=git,private dirty:(root:string,file:string)=>string|undefined=()=>undefined,private dirtyPaths:()=>string[]=()=>[]){
   this.events=new CodexEvents(event=>{if(event.threadId===this.selected){this.state.live=event;this.state.hooks='ready';this.emit();this.refresh();}});
   void this.events.start().catch(()=>{});
@@ -46,10 +49,10 @@ export class Companion {
  track(visible:boolean){this.visible=visible;clearTimeout(this.timer);if(visible)this.refresh();}
  select(id:string,manual?:string){
   if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))return;
-  this.epoch++;this.reviewEpoch++;this.followKey='';this.selected=id;this.manual=manual;this.rootAt=0;this.itemIds.clear();this.legacyHistory=false;
-  this.state={...this.state,selected:this.state.threads.find(t=>t.id===id),items:[],nextItems:undefined,roots:[],root:undefined,tree:undefined,review:undefined,reviewContext:undefined,hunk:0,practice:undefined,editor:undefined,reviewOpened:false,live:this.events.latest.get(id),error:undefined,loading:true,gap:false,updatedAt:undefined,editHistory:[],editsLoaded:false,editsLoading:false,nextEdits:undefined,editsError:false};this.emit();this.refresh();
+  this.epoch++;this.reviewEpoch++;this.followKey='';this.selected=id;this.manual=manual;this.rootAt=0;this.itemIds.clear();this.legacyHistory=false;this.taskRead=false;
+  this.state={...this.state,selected:this.state.threads.find(t=>t.id===id),items:[],nextItems:undefined,roots:[],root:undefined,tree:undefined,review:undefined,reviewContext:undefined,learningSearch:undefined,taskRequest:undefined,hunk:0,practice:undefined,editor:undefined,reviewOpened:false,live:this.events.latest.get(id),error:undefined,loading:true,gap:false,updatedAt:undefined,editHistory:[],editsLoaded:false,editsLoading:false,nextEdits:undefined,editsError:false};this.emit();this.refresh();
  }
- chooseRoot(root:string){if(!this.state.roots.some(r=>r.path===root&&!r.unavailable))return;this.epoch++;this.manual=root;this.state.root=root;this.state.rootSource='choice';this.state.ambiguous=false;this.state.review=undefined;this.state.reviewContext=undefined;this.state.editor=undefined;this.followKey='';this.reviewEpoch++;this.state.tree=undefined;this.resetEdits();this.rootAt=0;this.emit();this.refresh();}
+ chooseRoot(root:string){if(!this.state.roots.some(r=>r.path===root&&!r.unavailable))return;this.epoch++;this.manual=root;this.state.root=root;this.state.rootSource='choice';this.state.ambiguous=false;this.state.review=undefined;this.state.reviewContext=undefined;this.state.learningSearch=undefined;this.state.editor=undefined;this.followKey='';this.reviewEpoch++;this.state.tree=undefined;this.resetEdits();this.rootAt=0;this.emit();this.refresh();}
  private resetEdits(){this.editsEpoch++;this.state.editHistory=[];this.state.editsLoaded=false;this.state.editsLoading=false;this.state.nextEdits=undefined;this.state.editsError=false;}
  refresh(){if(this.disposed)return;clearTimeout(this.timer);if(this.running){this.again=true;return;}void this.scan();}
  reconnect(){this.epoch++;this.client?.dispose();this.client=undefined;this.listAt=0;this.state.mode='connecting';this.refresh();}
@@ -89,7 +92,8 @@ export class Companion {
    for(let page=0;page<8&&cursor&&!seen.has(cursor);page++){
     seen.add(cursor);const result=await this.pageItems(thread,cursor);
     if(epoch!==this.epoch||revision!==this.editsEpoch||root!==this.state.root||this.disposed)return;
-    const edits=((result.data??[]).map(activityItem).filter(Boolean) as ActivityItem[]).filter(item=>item.kind==='change'&&item.diffs?.some(change=>inside(root,path.resolve(root,change.path))));
+    const registered=this.state.roots.filter(tree=>!tree.unavailable).map(tree=>tree.path);if(!registered.length)registered.push(root);
+    const edits=((result.data??[]).map(activityItem).filter(Boolean) as ActivityItem[]).filter(item=>item.kind==='change'&&item.diffs?.some(change=>registered.some(tree=>inside(tree,path.resolve(root,change.path)))));
     cursor=result.nextCursor||undefined;this.state.editsLoaded=true;this.state.nextEdits=cursor&&!seen.has(cursor)?cursor:undefined;
     if(edits.length){
      const ids=new Set(edits.map(item=>item.id));
@@ -124,8 +128,17 @@ export class Companion {
    if(epoch!==this.epoch)return;
    const ids=new Set(fetched.map(i=>i.id));this.state.items=[...this.state.items.filter(i=>!ids.has(i.id)),...fetched.reverse()].slice(-300);
    this.itemIds=new Set(this.state.items.map(i=>i.id));if(!this.state.nextItems)this.state.nextItems=oldest;
+   this.state.taskRequest=[...this.state.items].reverse().find(item=>item.kind==='user')?.text||this.state.taskRequest;
    this.state.gap=!!cursor&&!found&&this.state.items.length>=250;
    this.state.live=this.events.latest.get(thread.id);this.state.updatedAt=Date.now();this.state.error=undefined;this.state.loading=false;this.emit();
+   if(!this.state.taskRequest&&!this.taskRead){
+    this.taskRead=true;
+    try{const result=await this.client.read('thread/turns/list',{threadId:thread.id,limit:1,itemsView:'summary',sortDirection:'desc'});
+     if(epoch!==this.epoch||this.disposed)return;
+     const items=((result.data??[])[0]?.items??[]).map(activityItem).filter(Boolean) as ActivityItem[];
+     this.state.taskRequest=items.reverse().find(item=>item.kind==='user')?.text;this.emit();
+    }catch{/* A missing request does not hide the live activity or worktree. */}
+   }
    phase='git';
    if(Date.now()-this.rootAt>10000){
     const canonical=await realpath(thread.cwd).catch(()=>thread.cwd);
@@ -194,9 +207,34 @@ export class Companion {
   const hunks=parseHunks(change.diff);this.state.review={root:this.state.root!,file:relative,head:'',before:'',after:'',hash:itemId+':'+file,hunks,recorded:true};this.state.hunk=0;this.state.practice=undefined;this.state.reviewOpened=false;this.state.reviewContext=undefined;this.emit();
   await this.loadReviewContext(item!,revision,selection);
  }
+ async learnLatest(){
+  let root=this.state.root,selection=this.epoch,revision=this.reviewEpoch;if(!root||this.state.learningSearch==='searching')return false;
+  this.state.learningSearch='searching';this.emit();let found=false,switched=false;
+  try{for(let page=0;page<4;page++){
+   if(selection!==this.epoch||revision!==this.reviewEpoch||this.disposed||root!==this.state.root)return false;
+   const edits=[...(this.state.editHistory??[]),...this.state.items].reverse();
+   for(const item of edits)for(const change of item.diffs??[]){
+    const absolute=await realpath(path.resolve(root,change.path)).catch(()=>path.resolve(root!,change.path));
+    if(selection!==this.epoch||revision!==this.reviewEpoch||this.disposed)return false;
+    const registered=this.state.roots.filter(tree=>!tree.unavailable).map(tree=>tree.path);if(!registered.length)registered.push(root);
+    const target=registered.filter(tree=>inside(tree,absolute)).sort((a,b)=>b.length-a.length)[0];
+    const relative=target?path.relative(target,absolute):'';
+    if(target&&isLearningCode(relative)&&parseHunks(change.diff).length){
+     // This explicit action follows an edit recorded in this exact chat and
+     // verified against Git's inventory, even after a tool ran in the main repo.
+     if(target!==root){this.epoch++;this.reviewEpoch++;this.manual=target;this.state.root=target;this.state.rootSource='activity';this.state.tree=this.state.roots.find(tree=>tree.path===target);this.state.ambiguous=false;this.followKey='';root=target;selection=this.epoch;revision=this.reviewEpoch;switched=true;}
+     await this.reviewRecorded(item.id,change.path);found=selection===this.epoch&&this.reviewEpoch===revision+1&&this.state.review?.file===relative;if(found&&switched)this.refresh();return found;
+    }
+   }
+   if(page===3||!(this.state.editsLoaded?this.state.nextEdits:this.state.nextItems))break;
+   await this.olderEdits();if(this.state.editsError)break;
+  }
+  return false;
+  }finally{if(selection===this.epoch&&!this.disposed){this.state.learningSearch=found||revision!==this.reviewEpoch?undefined:'empty';this.emit();}}
+ }
  private async loadReviewContext(item:ActivityItem,revision:number,selection:number){
   const threadId=this.selected,sameTurn=item.turnId?this.state.items.filter(i=>i.turnId===item.turnId):[];
-  this.state.reviewContext=item.turnId?{turnId:item.turnId,request:sameTurn.find(i=>i.kind==='user')?.text,response:[...sameTurn].reverse().find(i=>i.kind==='assistant')?.text,loading:true}:undefined;this.emit();
+  this.state.reviewContext=item.turnId?{turnId:item.turnId,...editContext(sameTurn,item),loading:true}:undefined;this.emit();
   // Read the original request and final answer for this exact turn. They are
   // display context only, never a generated explanation or retained memory.
   if(!item?.turnId||!threadId||!this.client)return;
@@ -205,7 +243,7 @@ export class Companion {
     const response=await this.client.read('thread/turns/list',{threadId,limit:1,itemsView:'summary',sortDirection:'desc',...(cursor?{cursor}:{})});
     if(revision!==this.reviewEpoch||selection!==this.epoch||this.disposed)return;
     const turn=(response.data??[]).find((turn:any)=>turn.id===item.turnId);
-    if(turn){const items=(turn.items??[]).map(activityItem).filter(Boolean) as ActivityItem[];this.state.reviewContext={turnId:item.turnId,request:items.find(i=>i.kind==='user')?.text,response:[...items].reverse().find(i=>i.kind==='assistant')?.text,loading:false};break;}
+    if(turn){const items=(turn.items??[]).map(activityItem).filter(Boolean) as ActivityItem[];this.state.reviewContext={turnId:item.turnId,...editContext(items,item),loading:false};break;}
     cursor=response.nextCursor||undefined;if(!cursor)break;
    }
   }catch{/* A missing context page must not hide the recorded edit. */}

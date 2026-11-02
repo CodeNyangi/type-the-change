@@ -98,7 +98,7 @@ test('recorded learning retrieves the original request of its exact turn without
  }};
  const run=async(_cwd:string,args:string[])=>args[0]==='worktree'?'worktree /repo\0HEAD a\0branch refs/heads/main\0\0':args[0]==='rev-parse'?'a':args[0]==='symbolic-ref'?'main':'';
  const model=new Companion(async()=>fake,()=>{},run);
- try{model.select('one');const end=Date.now()+3000;while(!model.state.tree&&Date.now()<end)await new Promise(r=>setTimeout(r,10));await model.reviewRecorded('edit','/repo/a.ts');assert.equal(model.state.review?.hunks.length,1);assert.deepEqual(model.state.reviewContext,{turnId:'old-turn',request:'Original request',response:'Original response',loading:false});assert.ok(calls.every(m=>!['thread/resume','turn/start'].includes(m)));model.clearReview();assert.equal(model.state.reviewContext,undefined);}finally{model.dispose();}
+ try{model.select('one');const end=Date.now()+3000;while(!model.state.tree&&Date.now()<end)await new Promise(r=>setTimeout(r,10));await model.reviewRecorded('edit','/repo/a.ts');assert.equal(model.state.review?.hunks.length,1);assert.deepEqual(model.state.reviewContext,{turnId:'old-turn',request:'Original request',response:'Original response',nearby:undefined,loading:false});assert.ok(calls.every(m=>!['thread/resume','turn/start'].includes(m)));model.clearReview();assert.equal(model.state.reviewContext,undefined);}finally{model.dispose();}
 });
 
 test('switching worktrees during an in-flight scan cannot attach the previous worktree changes',async()=>{
@@ -158,4 +158,30 @@ test('failed edit history can be retried without erasing live activity',async()=
 test('changing chats cancels an in-flight edit search and duplicate clicks share one request',async()=>{
  let release!:(value:any)=>void;const gate=new Promise(r=>release=r);const {model,cursors}=await editHistoryFixture(async()=>gate);
  try{const first=model.olderEdits();await model.olderEdits();assert.equal(cursors.length,1);model.select('two');release({data:[recordedEdit]});await first;assert.equal(model.state.editHistory?.length,0);assert.equal(model.state.editsLoading,false);}finally{release({data:[]});model.dispose();}
+});
+
+test('learning entry chooses an original code edit instead of generated reports, tests or another worktree',async()=>{
+ const {Companion}=await import('../src/companion.js');
+ const model=new Companion(async()=>({dispose(){}} as any),()=>{});
+ const patch='@@ -1,1 +1,1 @@\n-old\n+new\n';
+ try{
+  model.state={...model.state,root:'/repo',selected:thread,items:[
+   {id:'outside',kind:'change',text:'',diffs:[{path:'/other/source.py',diff:patch}]},
+   {id:'code',kind:'change',text:'',diffs:[{path:'/repo/services/payment.py',diff:patch}]},
+   {id:'generated',kind:'change',text:'',diffs:[{path:'/repo/artifacts/index_sources.py',diff:patch},{path:'/repo/test/test_payment.py',diff:patch},{path:'/repo/docs/review.md',diff:patch}]}
+  ]};
+  assert.equal(await model.learnLatest(),true);assert.equal(model.state.review?.file,'services/payment.py');assert.equal(model.state.review?.recorded,true);
+  model.state.review=undefined;model.state.items=model.state.items.filter(item=>item.id!=='code');assert.equal(await model.learnLatest(),false);assert.equal(model.state.learningSearch,'empty');
+ }finally{model.dispose();}
+});
+
+test('task entry preserves a recorded edit while following its registered worktree from the main repo',async()=>{
+ const {Companion}=await import('../src/companion.js');const calls:string[]=[];
+ const model=new Companion(async()=>({async start(){},async read(method:string){calls.push(method);return {data:[]};},dispose(){}} as any),()=>{});
+ try{
+  const root={path:'/repo',head:'a',branch:'main',current:true},tree={path:'/task',head:'b',branch:'feature',current:false};
+  model.state={...model.state,root:'/repo',selected:thread,roots:[root,tree],tree:root,items:[],editHistory:[{id:'original-edit',kind:'change',text:'',diffs:[{path:'/task/services/payment.py',diff:'@@ -1 +1 @@\n-old\n+new\n'}]}]};
+  assert.equal(await model.learnLatest(),true);assert.equal(model.state.root,'/task');assert.equal(model.state.review?.file,'services/payment.py');assert.ok(model.state.editHistory?.some(item=>item.id==='original-edit'));
+  assert.ok(calls.every(method=>!['turn/start','thread/resume','thread/fork'].includes(method)));
+ }finally{model.dispose();}
 });

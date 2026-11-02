@@ -2,9 +2,11 @@
 
 ## Follow an existing chat
 
-Open Type the Change with Cmd/Ctrl+Alt+T. Select a Codex chat by its original title; use the name filter or load older chats. The chat ID, not its title or current editor file, identifies the work. No new agent or duplicate conversation is created. Use **Continue in Codex** for new requests in the same chat.
+Open Type the Change with Cmd/Ctrl+Alt+T. The picker starts with five recent tasks from the current project and its registered worktrees. Expand **More tasks** or choose **Other projects** when needed.
 
-**Conversation** shows public messages, plans, command activity and recorded file changes. Older records are loaded in pages. Command activity is collapsed until you choose to show it. The original chat remains in Codex; TTC holds only a bounded display cache in memory.
+Select a task to read **Latest request** and **Codex progress**. **Explore this task’s code** finds an actual source edit and opens it in the editor. Generated artifacts, tests and prose are excluded from the default selection. History searches are bounded; an empty result is reported explicitly.
+
+The transcript is rendered only when **Original conversation** is expanded. Use **Codex ↗** for new requests in the original chat. TTC creates no agent or duplicate conversation.
 
 ## Live status
 
@@ -18,13 +20,13 @@ If your Codex installation exposes a custom shared Unix socket, set `typeTheChan
 
 ## Inspect and learn
 
-Open a change in **VS Code Source Control**. TTC’s **Code in view** follows the open file and the change section at your cursor. There is no second file picker in TTC. Files from a different worktree are identified; **Work details** shows the linked branch and directory and lets you choose a registered worktree.
+Start with **Explore this task’s code**. If a native Source Control comparison is already open, **Understand the change** follows only files linked to the selected task. Unrelated editor files are not promoted as lessons; **Work details** shows the linked branch and directory and lets you choose a registered worktree.
 
 Staged and unstaged comparisons use the exact two documents open in the editor. A regular source editor compares the last commit to current content, including unsaved text. The file must belong to the selected chat’s registered worktree.
 
-TTC shows a short extract of existing Codex context or the original request. **Expand original conversation** reveals the full context. No new explanation is generated. **View change in editor** opens an immutable comparison; viewing a native SCM diff already satisfies this step.
+TTC shows a short extract from messages near the specific edit or its original request. This is attributed original context, not a generated explanation of the code. **Expand original conversation** reveals the full context. No new explanation is generated. **View change in editor** opens an immutable comparison; viewing a native SCM diff already satisfies this step.
 
-For short replacements, **Try this change** opens a separate document. Use **Compare my code** to compare it with Codex’s text; expand the hint if needed. New files, deletions and large sections are not whole-file typing exercises. Practice never overwrites source, and matching text is not proof of behavior or understanding.
+For short source-code replacements, the optional **Try this change** opens a separate document. Use **Compare my code** to compare it with Codex’s text; expand the hint if needed. New files, deletions and large sections are not whole-file typing exercises. Practice never overwrites source, and matching text is not proof of behavior or understanding.
 
 Expand **Past Codex edits** to find changes after a commit. The bounded search skips command-only history; **Load earlier edits** continues farther back. These patches reflect their original moment and may differ from current files.
 
