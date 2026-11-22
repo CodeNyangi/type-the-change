@@ -62,7 +62,7 @@ test('IME composition does not submit, advance, or cancel a request',()=>{
 });
 test('all home action buttons route to distinct allowlisted commands',()=>{
  const v=view();v.update({files:['a.ts','한글.ts'],model:'모델 A'});
- for(const command of ['chooseFiles','chooseModel','demo','import','loadPending','mcpConfig','signIn']){v.click(command);assert.equal(v.messages.at(-1).command,command);assert.ok(PANEL_COMMANDS.has(command));}
+ for(const command of ['chooseFiles','chooseModel','import','loadPending','mcpConfig','signIn']){v.click(command);assert.equal(v.messages.at(-1).command,command);assert.ok(PANEL_COMMANDS.has(command));}
  assert.equal(v.get('files').textContent,'파일 참고 자료 추가 (2)');assert.equal(v.get('files').title,'a.ts\n한글.ts');
  v.update({files:['src/한글.ts']});assert.equal(v.get('files').textContent,'파일 참고 자료 추가 (1)');assert.equal(v.get('files').title,'src/한글.ts');
  v.update({files:[]});assert.equal(v.get('files').textContent,'파일 참고 자료 추가');assert.equal(v.get('files').title,'');
@@ -174,7 +174,7 @@ test('focus handoff disables notes and submission until the target view is ready
  await new Promise(resolve=>v.window.requestAnimationFrame(resolve));assert.deepEqual(v.messages.at(-1),{command:'focused',request:9});v.close();
 });
 test('English main controls and tutorial route work without translating user content',()=>{
- const v=view(false,'',false);assert.equal(v.document.documentElement.lang,'en');assert.equal(v.get('demo').textContent,'Practice editing & checking');assert.equal(v.get('tutorial').textContent,'How to');
+ const v=view(false,'',false);assert.equal(v.document.documentElement.lang,'en');assert.equal(v.document.querySelector('#demo'),null);assert.equal(v.get('tutorial').textContent,'How to');
  v.click('tutorial');assert.equal(v.messages.at(-1).command,'tutorial');
  v.update({...step,title:'내 코드의 제목',check:{task:'Check totals',sourceHash:'h',status:'failed',exitCode:1,durationMs:10,details:['expected 30, got 10']},judgment:{phase:'review',prediction:'30',evidence:'',reviewedHash:'h'}});
  assert.equal(v.get('title').textContent,'내 코드의 제목');assert.equal(v.get('keep').textContent,'Keep change');assert.equal(v.get('check-title').textContent,'× Check failed');assert.equal(v.get('check-task').textContent,'Check totals · Exit 1');v.close();

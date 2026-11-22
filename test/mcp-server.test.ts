@@ -60,6 +60,32 @@ test('MCP proposal writes guidance only; wrong anchors cannot replace the pendin
   assert.equal(await readFile(join(root, '.type-the-change', 'plan.json'), 'utf8'), pending);
 });
 
+test('Codex and Claude use independent proposal and review channels in one workspace', async t => {
+  const {root} = await setup(t);
+  const run = async (agent: 'codex' | 'claude', title: string) => {
+    const server = createTypingMcpServer(root, agent);
+    const client = new Client({name:agent, version:'1.0.0'});
+    const [a,b] = InMemoryTransport.createLinkedPair();
+    await server.connect(b);
+    await client.connect(a);
+    try {
+      const assessment = {impact:'Returns a different constant.', risk:'Callers may expect the old number.', verification:'Run the existing example.'};
+      const proposal = await client.callTool({name:'propose_typing_plan',arguments:{plan:{...plan,title},assessment}});
+      assert.equal(proposal.isError, undefined);
+      const review = await client.callTool({name:'report_change_review',arguments:{...assessment,summary:title,files:[{file:'example.ts',line:1,note:'Check the expected answer.'}]}});
+      assert.equal(review.isError, undefined);
+    } finally {await client.close();await server.close();}
+  };
+  await Promise.all([run('codex','Codex idea'),run('claude','Claude idea')]);
+  for (const [agent,title] of [['codex','Codex idea'],['claude','Claude idea']]) {
+    const submitted = JSON.parse(await readFile(join(root,'.type-the-change',`plan-${agent}.json`),'utf8'));
+    const reviewed = JSON.parse(await readFile(join(root,'.type-the-change',`report-${agent}.json`),'utf8'));
+    assert.equal(submitted.plan.title,title);
+    assert.equal(reviewed.summary,title);
+  }
+  assert.equal(await readFile(join(root,'example.ts'),'utf8'),'export const answer = 41;\n');
+});
+
 test('MCP rejects a proposal that would grow beyond the readable file limit without replacing pending guidance', async t => {
   const { root, client } = await setup(t);
   await client.callTool({ name: 'propose_typing_plan', arguments: { plan } });

@@ -2,6 +2,7 @@ import {workspaceHtml,workspaceStyles,workspaceScript} from './workspace-view.js
 import type {WorkspaceOverview} from './worktrees.js';
 import {chatHome,chatStyles,chatScript} from './chat-view.js';
 interface ChatMessage {role:'user'|'assistant';text:string;status?:'streaming'|'complete'|'stopped'|'error'}
+import type {Assessment} from './agent-inbox.js';
 import type {Judgment} from './judgment.js';
 import type {CheckResult} from './task-checks.js';
 export interface PanelState {
@@ -17,14 +18,15 @@ export interface PanelState {
   check?:CheckResult; checking?:boolean;
   handoff?:boolean; revision?:number;
   guidedStart?:boolean;
+  agent?:string; assessment?:Assessment;
   connecting?:boolean; errorAction?:string;
 }
 
 export const PANEL_COMMANDS = new Set([
-  'generate', 'chooseFiles', 'chooseModel', 'import', 'demo', 'focus', 'next',
+  'generate', 'chooseFiles', 'chooseModel', 'import', 'focus', 'next',
   'stop', 'signIn', 'mcpConfig', 'loadPending', 'usage', 'review', 'predict', 'decide',
   'advance','runCheck','chooseCheck','cancelCheck','problems','tutorial',
-  'useCurrentFile','openFolder','newChat','openProposal','chooseLanguage','configureCodex','openCodexThread','learnFromAnswer','moveView','showConversation','showLearning','watchWalkthrough','refreshWorkspace','viewChanges','explainChanges','openWorktree','refreshLearning',
+  'useCurrentFile','openFolder','newChat','openProposal','chooseLanguage','configureCodex','openCodexThread','learnFromAnswer','moveView','showConversation','showLearning','refreshWorkspace','viewChanges','explainChanges','openWorktree','refreshLearning',
 ]);
 
 export function panelHtml(nonce: string, mac: boolean, korean=true): string {
@@ -52,7 +54,7 @@ ${workspaceStyles}
 header{gap:8px;margin-bottom:8px}.header-actions{display:flex;align-items:center;gap:14px;margin-left:auto;flex-shrink:0}.header-actions button{font-size:11px}#view-switch{display:flex;gap:12px}#view-switch button{font-size:12px}#view-switch [aria-pressed=true]{color:var(--vscode-foreground);box-shadow:0 2px var(--vscode-focusBorder);font-weight:600}
 </style></head><body>
 <header><nav id="view-switch" aria-label="${t("대화와 학습","Conversation and learning")}" hidden><button id="conversation-tab" class="quiet" data-command="showConversation">${t("대화","Chat")}</button><button id="learning-tab" class="quiet" data-command="showLearning">${t("학습","Learn")}</button></nav><div class="header-actions"><button id="move-view" class="quiet" data-command="moveView">${t("위치 변경","Move view")}</button><button id="tutorial" class="quiet" data-command="tutorial" title="${t("지금 화면에서 사용법 보기","Quick help")}">${t("사용법","How to")}</button><button id="end" class="quiet close" data-command="stop" aria-label="${t("안내 끝내기","End session")}" title="${t("안내 끝내기 · 수정 내용은 유지됩니다","End session; keep your edits")}" hidden>×</button></div></header>
-<section id="help" class="connection-card" hidden aria-label="${t("빠른 사용법","Quick help")}"><div class="row"><h2>${t("세 단계면 시작할 수 있어요","Get started in three steps")}</h2><button id="close-help" class="quiet" type="button">${t("닫기","Close")}</button></div><ol><li><span>${t("수정안을 가져오거나 수정·검사 연습을 여세요.","Import a plan or open the editing and checking practice.")}</span></li><li><span>${t("바뀔 동작을 예상하고 수정 구간을 확인하세요.","Predict the behavior and inspect the suggested section.")}</span></li><li><span>${t("변경 제안을 열면 해당 코드로 이동합니다. 직접 고치고 검사한 뒤, 결과를 보고 유지할지 결정하세요.","Open a suggestion to reach the exact code. Edit, check, and decide whether to keep it.")}</span></li></ol><button class="quiet" data-command="watchWalkthrough">${t("수정·검사 영상 보기 (이전 화면)","Watch editing & checking (earlier UI)")}</button><p>${t("⌘⌥T / Ctrl+Alt+T: 열기·코드로 이동 · ⌘⌥Enter / Ctrl+Alt+Enter: 검사", "Cmd/Ctrl+Alt+T: open or return to code · Cmd/Ctrl+Alt+Enter: check")}</p></section>
+<section id="help" class="connection-card" hidden aria-label="${t("사용법","Help")}"><div class="row"><h2>${t("현재 파일에서 시작","Start from your current file")}</h2><button id="close-help" class="quiet" type="button">${t("닫기","Close")}</button></div><p>${t("왼쪽에서 내 코드를 열고 변경 이유를 확인하세요.","Open your code in the left sidebar and check why it changed.")}</p></section>
 ${workspaceHtml(korean)}
 ${chatHome(korean,sendKey)}
 <section id="guide" hidden>
@@ -61,13 +63,15 @@ ${chatHome(korean,sendKey)}
 <h1 id="title"></h1>
 <p id="guided-start" hidden>${t("편집기의 선택된 코드를 아래처럼 바꿔 보세요. 다 썼으면 ‘저장하고 검사’를 누르세요.","Replace the selected code in the editor with the suggestion below. Then choose Save & check.")}</p>
 <details id="proposal"><summary>${t("제안 보기","Suggestion")}</summary><p id="reason"></p><pre id="after" aria-label="${t("제안 코드","Suggested code")}"></pre><p id="delete-hint" hidden>${t("선택한 코드를 지우세요.","Delete the selected code.")}</p><details id="original"><summary>${t("변경 전","Before")}</summary><pre id="before" aria-label="${t("변경 전 코드","Original code")}"></pre></details></details>
-<form id="prediction-form"><label for="prediction">${t("어떤 결과를 예상하나요?","What do you expect?")}</label><textarea id="prediction" maxlength="280" rows="2" placeholder="${t("달라질 동작을 한 줄로","One expected result")}" spellcheck="false"></textarea><button id="predict" type="submit" disabled>${t("살펴보기","Explore")} <kbd>${sendKey}</kbd></button></form>
+<p id="agent-source" class="muted" hidden></p>
+<form id="prediction-form"><label for="prediction" id="prediction-label">${t("어떤 결과를 예상하나요?","What do you expect?")}</label><textarea id="prediction" maxlength="280" rows="2" placeholder="${t("달라질 동작을 한 줄로","One expected result")}" spellcheck="false"></textarea><button id="predict" type="submit" disabled>${t("살펴보기","Explore")} <kbd>${sendKey}</kbd></button></form>
 <div class="row" id="actions" hidden><button id="next" data-command="advance"><span id="next-label">${t("저장하고 검사","Save & check")}</span><kbd>${nextKey}</kbd></button><button id="edit" data-command="focus" class="quiet">${t("코드로","Code")}</button><button id="review" data-command="review" hidden>${t("다시 비교","Compare again")}</button></div>
 <section id="check-result" role="status" aria-live="polite" hidden><div id="check-title"></div><div id="check-task" class="muted"></div><div id="check-details"></div><button id="cancel-check" data-command="cancelCheck" class="quiet" hidden>${t("검사 중단","Stop check")}</button></section>
-<section id="reflection" hidden><p id="expectation" class="muted"></p><label for="evidence">${t("예상과 비교하면?","What did you find?")}</label><textarea id="evidence" maxlength="280" rows="2" placeholder="${t("유지하거나 거절할 이유 한 줄","One reason to keep or reject")}" spellcheck="false"></textarea><div class="row" id="decisions"><button id="keep" data-command="decide" data-decision="keep" disabled>${t("이 변경 유지","Keep change")}</button><button id="reject" data-command="decide" data-decision="reject" class="secondary" disabled>${t("제안 거절","Reject")}</button><button id="defer" data-command="decide" data-decision="defer" class="quiet">${t("보류","Defer")}</button></div><p class="muted">${t("검사 통과 ≠ 정답 · 채택은 직접 판단","A passing check is evidence. You decide.")}</p></section>
+<section id="reflection" hidden><p id="expectation" class="muted"></p><label for="evidence" id="evidence-label">${t("예상과 비교하면?","What did you find?")}</label><textarea id="evidence" maxlength="280" rows="2" placeholder="${t("유지하거나 거절할 이유 한 줄","One reason to keep or reject")}" spellcheck="false"></textarea><div class="row" id="decisions"><button id="keep" data-command="decide" data-decision="keep" disabled>${t("이 변경 유지","Keep change")}</button><button id="reject" data-command="decide" data-decision="reject" class="secondary" disabled>${t("제안 거절","Reject")}</button><button id="defer" data-command="decide" data-decision="defer" class="quiet">${t("보류","Defer")}</button></div><p class="muted">${t("검사 통과 ≠ 정답 · 채택은 직접 판단","A passing check is evidence. You decide.")}</p></section>
 <p id="keyboard-hint" class="muted" hidden></p>
 <details id="check-tools" hidden><summary>${t("검사 옵션","Check options")}</summary><div class="options"><button class="quiet" data-command="runCheck">${t("저장하고 다시 검사","Save & recheck")}</button><button class="quiet" data-command="chooseCheck">${t("검사 선택","Choose check")}</button><button class="quiet" data-command="problems">${t("오류 위치 보기","Show problems")}</button><button id="compare-only" class="quiet" data-command="next">${t("검사 없이 비교","Compare only")}</button></div></details>
 <p id="status" role="status" aria-live="polite"></p>
+<details id="assessment" hidden><summary>${t("AI의 영향과 검토 의견","Agent's assessment")}</summary><p id="assessment-impact"></p><p id="assessment-risk"></p><p id="assessment-verification"></p></details>
 <details id="record" hidden><summary>${t("판단 근거","My reasoning")}</summary><p id="record-prediction"></p><p id="record-evidence"></p></details>
 
 <button id="again" data-command="stop" class="quiet" hidden>${t("다른 변경","New change")}</button>
@@ -98,7 +102,7 @@ window.addEventListener('message',({data:s})=>{
  if(s?.type==='focusStep'){if(!state.handoff){focusStep();if(Number.isSafeInteger(s.request))send('focused',{request:s.request});}return;}
  if(!s||typeof s!=='object'||Object.hasOwn(s,'type'))return;const wasActive=!!state.file&&state.surface!=='chat';const priorPhase=state.judgment?.phase;const priorHash=state.judgment?.reviewedHash;const focused=document.activeElement?.id;const focusedHelp=$('proposal').contains(document.activeElement);let newStep=false;state=s;const hasLearning=typeof s.file==='string',active=hasLearning&&s.surface!=='chat';$('view-switch').hidden=!hasLearning;$('conversation-tab').setAttribute('aria-pressed',String(!active));$('learning-tab').setAttribute('aria-pressed',String(active));$('home').hidden=active;$('guide').hidden=!active;$('end').hidden=!active;
  $('loading').hidden=!s.busy;$('phase').textContent=s.phase||'';
- for(const id of ['files','model','demo','connect','use-current','open-folder','retry'])$(id).disabled=!!s.busy;
+ for(const id of ['files','model','connect','use-current','open-folder','retry'])$(id).disabled=!!s.busy;
  renderChat(s);renderWorkspace(s);
  (active?$('guide-feedback'):$('home')).insertBefore($('feedback'),active?null:$('request'));
  $('feedback').hidden=!s.error;$('error').hidden=!s.error;$('error').textContent=s.error||'';$('retry').hidden=!s.errorAction;$('retry').textContent=s.errorAction==='configureCodex'?'${t('Codex 실행 파일 설정','Choose Codex executable')}':s.errorAction==='chooseModel'?'${t("모델 목록 다시 불러오기","Reload models")}':s.errorAction==='signIn'?'${t("Codex 다시 연결","Reconnect Codex")}':s.errorAction==='usage'?'${t("사용량 확인","View usage")}':'${t("다시 시도","Try again")}';$('notice').hidden=!s.notice;$('notice').textContent=s.notice||'';
@@ -108,6 +112,9 @@ window.addEventListener('message',({data:s})=>{
  $('after').textContent=s.after??'';$('after').hidden=s.after==='';$('delete-hint').hidden=s.after!=='';$('before').textContent=s.before||'';
  $('reason').textContent=s.reason||'';$('reason').hidden=!s.reason;
  const j=s.judgment||{phase:'predict',prediction:'',evidence:''};const phase=j.phase;const done=phase==='done';$('guided-start').hidden=!s.guidedStart||phase!=='edit';
+ $('agent-source').hidden=!s.agent;$('agent-source').textContent=s.agent||'';
+ $('assessment').hidden=!s.assessment||phase==='predict';
+ for(const [key,label] of [['impact',${JSON.stringify(t('영향','Impact'))}],['risk',${JSON.stringify(t('주의','Risk'))}],['verification',${JSON.stringify(t('확인','Verification'))}]])$('assessment-'+key).textContent=s.assessment?.[key]?label+' · '+s.assessment[key]:'';
  $('prediction-form').hidden=phase!=='predict'||!!s.handoff;$('actions').hidden=phase==='predict'||phase==='review';$('reflection').hidden=phase!=='review';$('proposal').hidden=phase==='predict';
  $('next').hidden=phase!=='edit';$('next').disabled=!!s.checking;$('next-label').textContent=s.checking?'${t("검사 중…","Checking…")}':'${t("저장하고 검사","Save & check")}';$('edit').hidden=phase!=='edit';$('review').hidden=!done;$('again').hidden=!done;
  $('check-tools').hidden=phase==='predict';for(const button of $('check-tools').querySelectorAll('button'))button.disabled=!!s.checking;

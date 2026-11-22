@@ -8,3 +8,4 @@ artifacts/
 .DS_Store
 test-results/
 demo-workspace/
+/type-the-change-*.vsix

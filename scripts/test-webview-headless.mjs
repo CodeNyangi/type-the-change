@@ -146,14 +146,14 @@ try{
     assert.notEqual(focusStyle.width,'0px');assert.notEqual(focusStyle.style,'none');
     await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.id),'generate');
     await page.locator('#chat-options summary').focus();await page.keyboard.press('Space');assert.equal(await page.locator('#chat-options').evaluate(e=>e.open),true);
-    for(const command of ['chooseFiles','demo','import','loadPending','mcpConfig','signIn','tutorial','openFolder']){
+    for(const command of ['chooseFiles','import','loadPending','mcpConfig','signIn','tutorial','openFolder']){
       await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);
     }
     await update({contextMode:'manual',files:['manual.ts']});await page.locator('#use-current').click();assert.equal(await lastCommand(),'useCurrentFile');
     await update({connected:true});await page.getByRole('button',{name:'자동',exact:true}).click();assert.equal(await lastCommand(),'chooseModel');
     for(const command of ['usage']){await page.locator(`[data-command="${command}"]`).click();assert.equal(await lastCommand(),command);}
     await page.locator('#move-view').click();assert.equal(await lastCommand(),'moveView');
-    await page.locator('#tutorial').click();await page.evaluate(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'showHelp'}})));await page.locator('[data-command=watchWalkthrough]').click();assert.equal(await lastCommand(),'watchWalkthrough');await page.locator('#close-help').click();
+    await page.locator('#tutorial').click();await page.evaluate(()=>window.dispatchEvent(new MessageEvent('message',{data:{type:'showHelp'}})));assert.equal(await page.locator('#help').isVisible(),true);await page.locator('#close-help').click();
     await update({...states.predict,surface:'chat'});await page.locator('#learning-tab').click();assert.equal(await lastCommand(),'showLearning');await update(states.predict);await page.locator('#conversation-tab').click();assert.equal(await lastCommand(),'showConversation');
     await update(states.predict);await page.locator('#file').click();assert.equal(await lastCommand(),'focus');
     assert.equal(await page.locator('#proposal').isVisible(),false,'predict before revealing the suggestion');

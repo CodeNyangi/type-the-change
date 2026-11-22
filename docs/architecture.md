@@ -7,3 +7,5 @@ The default learner surface is a card reader. `lesson.ts` parses an explicit `tt
 `prepareLesson` copies a bounded request and opens the original Codex deeplink. It never sends the request, invokes a model, resumes an agent or changes global Codex instructions. The person pastes and sends in the original chat. Later cards arrive through the same read-only observer.
 
 Optional imported-plan editing/checking and native comparison commands remain separate existing features. Their source safety, scoped saving and explicit check rules are retained. There is no independent TTC agent, authentication flow or conversation/learning database.
+
+The separate Activity Bar agent sidebar observes recent scoped local Codex and Claude Code tool records and uses the built-in Git extension for current diffs. Its explicit Send action launches the chosen CLI; the right-side learning reader still uses the established Codex companion connection. Generated typing proposals pass through the existing source validation and human editing flow.
