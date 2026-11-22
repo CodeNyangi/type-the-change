@@ -5,6 +5,8 @@ import * as path from 'node:path';
 import {reportSchema} from '../src/agent-inbox.js';
 import {activityHtml} from '../src/activity-map.js';
 import {agentTurnArgs, reviewPrompt} from '../src/agent-review.js';
+import {CodexSidebarHistory, claudeCliThreads, cloudClaudeLink, mergeAgentThreads, recordedCodexEdits} from '../src/agent-history.js';
+import type {CodexObserver} from '../src/codex-observer.js';
 import {parseThread} from '../src/local-threads.js';
 
 const id = '12345678-1234-1234-1234-123456789abc';
@@ -139,4 +141,64 @@ test('the activity map displays each agenda and dispatches only the chosen threa
     assert.equal(page.querySelector<HTMLDetailsElement>('.file-entry details')?.open,true);
     assert.deepEqual(JSON.parse(JSON.stringify(messages.at(-1))), {command:'evidence',agent:'codex',id,file:'<script>.ts'});
   } finally {dom.window.close();}
+});
+
+test('the sidebar pages Codex history by open project and keeps its local recorded evidence', async () => {
+  const calls: {method:string;params:any}[] = [];
+  const app = {id,name:'App task',cwd:root,updatedAt:1234567890,status:{type:'active'}};
+  const history = new CodexSidebarHistory(async()=>({
+    read:async(method:string,params:any)=>{
+      calls.push({method,params});
+      return params.cursor ? {data:[{...app,id:'second',name:'Earlier app task'}]} :
+        {data:[app,{...app,id:'unrelated',cwd:nextToRoot}],nextCursor:'other-page'};
+    },
+    dispose(){},
+  } as unknown as CodexObserver));
+  try {
+    const saved=await history.recent([root]);
+    assert.deepEqual(saved.map(thread=>thread.id),[id,'second']);
+    assert.ok(saved[0].active);
+    assert.ok(calls.every(call=>call.method==='thread/list' && call.params.cwd===root));
+    assert.equal(saved[0].updatedAt,1234567890000);
+    const local={...saved[0],source:undefined,localRecord:true,edits:[{file:'code.ts',kind:'edit' as const,pending:false}]};
+    const merged=mergeAgentThreads([local],saved);
+    assert.equal(merged.length,2);
+    assert.equal(merged[0].localRecord,true);
+    assert.deepEqual(merged[0].edits,local.edits);
+  } finally {history.dispose();}
+});
+
+test('Codex app evidence keeps same-turn explanations and excludes edits outside the project', () => {
+  const thread = {id,agent:'codex' as const,root,cwd:root,updatedAt:1,edits:[]};
+  const item = (turnId:string, value:object)=>({turnId,item:{id:JSON.stringify(value),...value}});
+  const diff='@@ -1 +1 @@\n-before\n+after\n';
+  const changes=(paths:string[])=>({type:'fileChange',status:'completed',changes:paths.map(path=>({path,diff,kind:{type:'update'}}))});
+  const edits=recordedCodexEdits(thread,[
+    item('a',{type:'agentMessage',text:'Edited `first.ts` because the default was stale.'}),
+    item('a',changes(['first.ts',path.join(nextToRoot,'foreign.ts')])),
+    item('a',{type:'agentMessage',text:'Why `second.ts` changed in another turn'}),
+    item('b',changes(['second.ts'])),
+  ]);
+  assert.deepEqual(edits.map(edit=>edit.file),['second.ts','first.ts']);
+  assert.equal(edits[0].reason,undefined);
+  assert.match(edits[1].reason!,/default was stale/);
+  assert.deepEqual(edits[1].excerpt,{before:'before\n',after:'after\n'});
+});
+
+test('Claude active rows stay workspace-scoped and cloud links use the exact provider host', () => {
+  const rows=claudeCliThreads([
+    {sessionId:id,cwd:root,name:'Active Claude',status:'running',startedAt:1234567890},
+    {sessionId:id,cwd:nextToRoot,name:'Other workspace',status:'running'},
+    {sessionId:'not-a-session',cwd:root,name:'Wrong identity',status:'running'},
+  ],[root]);
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].active,true);
+  assert.equal(rows[0].source,'claude-cli');
+  const url='https://claude.ai/code/cshk_example_link';
+  assert.equal(cloudClaudeLink(url+'?preview=true#home'),url);
+  assert.equal(cloudClaudeLink('https://claude.ai/code/session_example_link'),'https://claude.ai/code/session_example_link');
+  for (const invalid of ['https://claude.ai.example.com/code/cshk_example_link','https://other@claude.ai/code/cshk_example_link',
+    'http://claude.ai/code/cshk_example_link','https://claude.ai/code/cshk_example_link/events','--help']) {
+    assert.equal(cloudClaudeLink(invalid),undefined);
+  }
 });

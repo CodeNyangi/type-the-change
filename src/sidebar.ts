@@ -5,8 +5,12 @@ import {realpath} from 'node:fs/promises';
 import {agents, agentNames, inboxFiles, planFile, readProposal, readReport, type Agent, type Assessment} from './agent-inbox.js';
 import {readWorkspaceFile, writeBridgeFile, WorkspaceFileError} from './workspace-files.js';
 import {parsePlan, validatePlanAgainstFiles, validateRelativePath} from './plan.js';
-import {LocalThreadReader, type LocalThread} from './local-threads.js';
-import {agentModels, effortLevels, reviewPrompt, runAgentTurn} from './agent-review.js';
+import {LocalThreadReader, type LocalThread, type ThreadEdit} from './local-threads.js';
+import {agentModels, effortLevels, listClaudeAgents, reviewPrompt, runAgentTurn, sendClaudeCloud} from './agent-review.js';
+import {CodexSidebarHistory, cloudClaudeLink, claudeCliThreads, mergeAgentThreads} from './agent-history.js';
+import {createCodexObserver} from './companion-host.js';
+import {findCodex} from './codex-observer.js';
+import {queueExplanation, RequestError} from './codex-request.js';
 import {activityHtml} from './activity-map.js';
 import {git as readGit} from './worktrees.js';
 import {parseHunks} from './change-review.js';
@@ -41,6 +45,9 @@ type Row = vscode.TreeItem & {thread?: LocalThread; children?: Row[] | (() => Pr
 const limit = 200;
 const viewId = 'typeTheChange.sidebar';
 const localHistoryKey = 'showLocalAgentThreads';
+const cloudLinksKey = 'claudeCloudLinks';
+const threadPageSize = 8;
+type CloudLink = {root: string; url: string; title: string; addedAt: number};
 const gitStatus = {addedToIndex:1, deletedFromIndex:2, deleted:6, untracked:7} as const;
 
 function action(label: string, icon: string, command?: string, args: unknown[] = []): Row {
@@ -81,6 +88,11 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
   let showThreads = context.workspaceState.get<boolean>(localHistoryKey) === true;
   let threads: LocalThread[] = [];
   const threadReader = new LocalThreadReader();
+  const codexHistory = new CodexSidebarHistory(() => createCodexObserver(context));
+  const visibleCount: Record<Agent,number> = {codex:threadPageSize,claude:threadPageSize};
+  const requestedHistory = new Set<string>();
+  const ownerSends = new Set<string>();
+  let claudeCatalog = {key:'', nextCheck:0, threads:[] as LocalThread[]};
   const outputs = new Map<string, string>();
   const replies = new Map<string, vscode.Uri>();
   const abortReviews = new AbortController();
@@ -99,13 +111,44 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
     }
   };
 
+  function openRoots() {
+    return (vscode.workspace.workspaceFolders ?? []).filter(folder=>folder.uri.scheme==='file').map(folder=>folder.uri.fsPath);
+  }
+
+  function cloudLinks() {return context.workspaceState.get<CloudLink[]>(cloudLinksKey) ?? [];}
+
+  async function cloudThreads(roots: readonly string[]): Promise<LocalThread[]> {
+    const links = cloudLinks().filter(link=>roots.includes(link.root) && cloudClaudeLink(link.url)===link.url);
+    const reports = (await Promise.all(roots.map(async root=>{
+      const report = await readReport(root,'claude').catch(()=>undefined);
+      const url = report?.source && cloudClaudeLink(report.source.url);
+      return url && report ? {root,url,title:report.summary,addedAt:0} : undefined;
+    }))).filter(link=>link!==undefined);
+    return [...new Map([...reports,...links].map(link=>[link.url,link])).values()].map(link=>({
+      id:link.url.split('/').at(-1)!, agent:'claude', root:link.root, cwd:link.root, title:link.title,
+      cloudUrl:link.url, source:'claude-cloud', updatedAt:link.addedAt, edits:[],
+    }));
+  }
+
+  async function activeClaudeThreads(roots: readonly string[]) {
+    const key=JSON.stringify(roots);
+    if (claudeCatalog.key===key && claudeCatalog.nextCheck>Date.now()) return claudeCatalog.threads;
+    const found=await Promise.all(roots.map(root=>listClaudeAgents(root,abortReviews.signal)
+      .then(data=>claudeCliThreads(data,roots)).catch(()=>[])));
+    claudeCatalog={key,nextCheck:Date.now()+12_000,threads:mergeAgentThreads(...found)};
+    return claudeCatalog.threads;
+  }
+
   async function scanThreads() {
     if (disposed || (!visible && !map?.visible) || !showThreads || scanning || !vscode.workspace.isTrusted || vscode.env.remoteName) return;
     scanning = true;
     try {
-      const roots = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file').map(folder => folder.uri.fsPath);
-      const next = await threadReader.recent(roots);
-      if (disposed || !showThreads) return;
+      const roots = openRoots();
+      const [local, savedCodex, claude, cloud] = await Promise.all([
+        threadReader.recent(roots),codexHistory.recent(roots),activeClaudeThreads(roots),cloudThreads(roots),
+      ]);
+      if (disposed || !showThreads || JSON.stringify(roots)!==JSON.stringify(openRoots())) return;
+      const next = mergeAgentThreads(local,savedCodex,claude,cloud);
       if (JSON.stringify(next) !== JSON.stringify(threads)) {threads = next;refresh();}
     } finally {scanning = false;}
   }
@@ -137,6 +180,7 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
         const report = await readReport(root, agent);
         if (report) {
           const cloud = agent === 'claude' && report.source;
+          if (cloud && showThreads && cloudClaudeLink(cloud.url)) return rows;
           const files = report.files.map(item => {
             const row = cloud ? action(path.posix.basename(item.file), 'diff', 'typeTheChange.openClaudeEvidence', [root,item.file]) : action(item.file + (item.line ? `:${item.line}` : ''), 'file-code', 'typeTheChange.openFinding', [root, item.file, item.line]);
             row.description = cloud ? undefined : item.note;
@@ -191,39 +235,83 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
     return row;
   }
 
-  async function threadRows(): Promise<Row[]> {
-    if (!showThreads) return [action(t('스레드 보기', 'Show threads'), 'history', 'typeTheChange.toggleLocalThreads')];
-    if (!threads.length) return [action(t('로컬 기록 없음', 'No local records'), 'history')];
-    return threads.map(thread => {
-      const name = agentNames[thread.agent];
-      const rows = thread.edits.map(edit => {
-        const labels = {add: t('추가','Added'), edit:t('수정','Edited'), delete:t('삭제','Deleted'), rename:t('이름 변경','Renamed')};
-        const row = fileRow(thread.root, edit.file, vscode.Uri.joinPath(vscode.Uri.file(thread.root), edit.file),
-          edit.pending ? t('편집 요청 기록', 'Edit requested') : labels[edit.kind]);
-        row.id = `thread:${thread.id}:${edit.file}`;
-        row.thread = thread;
-        row.contextValue = 'ttcThreadFile';
-        if (edit.reason) row.tooltip = edit.reason;
-        if (edit.excerpt) row.command = {command:'typeTheChange.openThreadEvidence',title:t('당시 코드','Recorded edit'),arguments:[thread.agent,thread.id,edit.file]};
+  function sliceThreads(agent: Agent) {
+    return threads.filter(thread=>thread.agent===agent)
+      .sort((a,b)=>Number(!!b.active)-Number(!!a.active)||Number(!!b.cloudUrl)-Number(!!a.cloudUrl)||b.updatedAt-a.updatedAt);
+  }
 
-        row.iconPath = new vscode.ThemeIcon(edit.pending ? 'history' : ({add:'diff-added',edit:'diff-modified',delete:'diff-removed',rename:'diff-renamed'})[edit.kind]);
-        return row;
-      });
-      return group(`thread:${thread.agent}:${thread.id}`, thread.title || `${name} · ${thread.id.slice(-6)}`, async () => {
-        const report = await readReport(thread.root, thread.agent).catch(() => undefined);
-        const reply = replies.get(`${thread.agent}:${thread.id}`);
-        return [
-          ...(reply ? [action(t('최근 답변 열기','Open latest reply'), 'comment', 'typeTheChange.openAgentReply', [thread.agent, thread.id])] : []),
-          ...(report?.threadId === thread.id ? notes(report) : []),
-          ...(rows.length ? rows : [action(t('기록된 파일 편집 없음', 'No recorded file edits'), 'file')]),
-        ];
-      });
-    }).map((row, index) => {
-      const thread = threads[index];
-      row.thread = thread;
-      row.contextValue = 'ttcAgentThread';
-      row.description = `${agentNames[thread.agent]} · ${thread.edits.length} · ${new Date(thread.updatedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
-      row.tooltip = t('로컬 도구 기록입니다. 실제 파일은 Git 변경에서 확인할 수 있어요.', 'Local tool events. Check Git for current changes.');
+  function threadDescription(thread: LocalThread) {
+    if (thread.cloudUrl) return t('클라우드','Cloud');
+    if (thread.active) return t('진행 중','Active');
+    return thread.source==='codex-app' ? t('Codex 앱','Codex app') : t('로컬','Local');
+  }
+
+  async function threadEdits(thread: LocalThread) {
+    if (thread.source!=='codex-app' || thread.edits.length) return thread.edits;
+    return codexHistory.edits(thread);
+  }
+
+  function recordedRows(thread: LocalThread, edits: ThreadEdit[]) {
+    return edits.map(edit => {
+      const labels = {add:t('추가','Added'), edit:t('수정','Edited'), delete:t('삭제','Deleted'), rename:t('이름 변경','Renamed')};
+      const row = fileRow(thread.root,edit.file,vscode.Uri.joinPath(vscode.Uri.file(thread.root),edit.file),
+        edit.pending ? t('편집 요청','Edit requested') : labels[edit.kind]);
+      row.id = 'thread:'+thread.agent+':'+thread.id+':'+edit.file;
+      row.thread = {...thread,edits};
+      row.contextValue = 'ttcThreadFile';
+      row.tooltip = (edit.reason || edit.context) ? edit.file+'\n'+(edit.reason||edit.context) : edit.file;
+      if (edit.excerpt) row.command = {command:'typeTheChange.openThreadEvidence',title:t('당시 코드','Recorded edit'),arguments:[thread.agent,thread.id,edit.file]};
+      row.iconPath = new vscode.ThemeIcon(edit.pending ? 'history' : ({add:'diff-added',edit:'diff-modified',delete:'diff-removed',rename:'diff-renamed'})[edit.kind]);
+      return row;
+    });
+  }
+
+  async function cloudReport(thread: LocalThread) {
+    const report = await readReport(thread.root,'claude').catch(()=>undefined);
+    return report?.source && cloudClaudeLink(report.source.url)===thread.cloudUrl ? report : undefined;
+  }
+
+  function threadRow(thread: LocalThread) {
+    const row = group('thread:'+thread.agent+':'+thread.id, thread.title||thread.agenda||agentNames[thread.agent]+' · '+thread.id.slice(-6), async ()=>{
+      if (thread.cloudUrl) {
+        const report = await cloudReport(thread);
+        const files = report?.files.map(item=>{
+          const row = action(path.posix.basename(item.file),'diff','typeTheChange.openClaudeEvidence',[thread.root,item.file]);
+          row.tooltip=item.file+'\n'+item.note;
+          return row;
+        }) ?? [];
+        return [...files,action(t('이 스레드로 보내기','Send to this thread'),'send','typeTheChange.sendToThread',[thread.agent,thread.id])];
+      }
+      const report = await readReport(thread.root,thread.agent).catch(()=>undefined);
+      const reply = replies.get(thread.agent+':'+thread.id);
+      let files: Row[];
+      try {
+        const edits = await threadEdits(thread);
+        files = edits.length ? recordedRows(thread,edits) : [action(t('기록된 파일 편집 없음','No recorded file edits'),'file')];
+      } catch {files=[action(t('변경 기록을 다시 읽어 주세요','Reload recorded changes'),'refresh','typeTheChange.refreshSidebar')];}
+      return [
+        ...(reply?[action(t('최근 답변 열기','Open latest reply'),'comment','typeTheChange.openAgentReply',[thread.agent,thread.id])]:[]),
+        ...(report?.threadId===thread.id?notes(report):[]),
+        ...files,
+      ];
+    });
+    row.thread=thread;
+    row.contextValue='ttcAgentThread';
+    row.description=threadDescription(thread);
+    row.tooltip=thread.cloudUrl ? t('연결한 Claude Code 클라우드 작업','Linked Claude Code cloud session') : undefined;
+    return row;
+  }
+
+  function threadRows(): Row[] {
+    if (!showThreads) return [action(t('스레드 보기','Show threads'),'history','typeTheChange.toggleLocalThreads')];
+    return agents.map(agent=>{
+      const matching=sliceThreads(agent);
+      const items=matching.slice(0,visibleCount[agent]).map(threadRow);
+      if (!items.length) items.push(action(agent==='claude'?t('이 폴더에 로컬 세션 없음','No local sessions for this folder'):t('기록 없음','No threads found'),'history'));
+      if (matching.length>visibleCount[agent]) items.push(action(t('더 보기','Show more'),'ellipsis','typeTheChange.moreThreads',[agent]));
+      if (agent==='claude') items.push(action(t('클라우드 스레드 연결','Link cloud session'),'link','typeTheChange.linkClaudeCloud'));
+      const row=group('threads:'+agent,agentNames[agent],items,true);
+      row.description=String(matching.length);
       return row;
     });
   }
@@ -338,7 +426,11 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
   }
   async function openThreadEvidence(thread: LocalThread, file: string) {
     requireFolder(thread.root);
-    const edit = thread.edits.find(item => item.file === file);
+    if (thread.cloudUrl) {
+      if ((await cloudReport(thread))?.files.some(item=>item.file===file)) await openClaudeEvidence(thread.root,file);
+      return;
+    }
+    const edit = (await threadEdits(thread).catch(()=>[])).find(item => item.file === file);
     if (!edit) return;
     if (!edit.excerpt) {
       await vscode.commands.executeCommand('typeTheChange.inspectFile',thread.root,file);
@@ -369,6 +461,77 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage(t('이 커밋에서 해당 파일의 diff를 찾지 못했어요.','No matching local commit diff for this file.'));
     }
   }
+  async function linkClaudeCloud() {
+    const folders = (vscode.workspace.workspaceFolders ?? []).filter(folder=>folder.uri.scheme==='file');
+    const folder = folders.length===1 ? folders[0] : await vscode.window.showWorkspaceFolderPick();
+    if (!folder) return;
+    const root=folder.uri.fsPath;
+    requireFolder(root);
+    const value=await vscode.window.showInputBox({
+      title:t('Claude 클라우드 스레드 연결','Link a Claude cloud session'),
+      placeHolder:'https://claude.ai/code/…',
+      validateInput: input=>cloudClaudeLink(input) ? undefined : t('Claude Code 작업 링크를 붙여 넣으세요.','Paste a Claude Code session link.'),
+    });
+    const url=value && cloudClaudeLink(value);
+    if (!url) return;
+    const title=await vscode.window.showInputBox({prompt:t('사이드바에 표시할 이름','Name in the sidebar'),value:t('Claude 클라우드 작업','Claude cloud session')});
+    if (title===undefined) return;
+    requireFolder(root);
+    const links=cloudLinks().filter(link=>link.url!==url);
+    await context.workspaceState.update(cloudLinksKey,[{root,url,title:title.trim().slice(0,120)||'Claude Code',addedAt:Date.now()},...links].slice(0,30));
+    showThreads=true;
+    await context.workspaceState.update(localHistoryKey,true);
+    void scanThreads();
+  }
+
+  async function sendCloudThread(thread: LocalThread) {
+    const url=thread.cloudUrl && cloudClaudeLink(thread.cloudUrl);
+    if (!url || ownerSends.has(url)) return;
+    requireFolder(thread.root);
+    ownerSends.add(url);
+    try {
+      const prompt=await vscode.window.showInputBox({
+        title:thread.title||'Claude Code',
+        prompt:t('기존 클라우드 세션의 모델과 권한으로 실행됩니다.','Runs with the existing cloud session’s model and permissions.'),
+        placeHolder:t('이 세션에 보낼 요청','Request to send to this session'),
+        validateInput:value=>value.trim().length>3000?t('3,000자 이내로 적어 주세요.','Use 3,000 characters or fewer.'):undefined,
+      });
+      if (!prompt?.trim()) return;
+      requireFolder(thread.root);
+      await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:t('Claude 클라우드로 보내는 중','Sending to Claude Cloud')},
+        ()=>sendClaudeCloud(url,thread.root,prompt.trim(),abortReviews.signal));
+      void vscode.window.showInformationMessage(t('Claude 클라우드 스레드에 요청을 넣었습니다.','Request queued in the Claude cloud session.'));
+    } catch {
+      void vscode.window.showWarningMessage(t('Claude 클라우드의 접수를 확인하지 못했어요. 다시 보내기 전에 원래 스레드를 확인하세요.','Claude Cloud did not confirm delivery. Check the original session before resending.'));
+    } finally {ownerSends.delete(url);}
+  }
+
+  async function sendCodexOwner(thread: LocalThread, file?: string, explain = false) {
+    if (ownerSends.has(thread.id)) return;
+    requireFolder(thread.root);
+    ownerSends.add(thread.id);
+    try {
+      const prompt=await vscode.window.showInputBox({
+        title:thread.title||'Codex',
+        prompt:t('원래 Codex 채팅의 모델과 권한으로 실행됩니다.','Runs with the original Codex chat’s model and permissions.'),
+        value:file && explain ? t(file+'의 변경 이유, 근거 코드 한 곳과 영향을 설명해 주세요.','Explain why '+file+' changed, with one code reference and one impact.') : undefined,
+        placeHolder:t('이 채팅에 보낼 요청','Request to send to this chat'),
+        validateInput:value=>value.trim().length>3000?t('3,000자 이내로 적어 주세요.','Use 3,000 characters or fewer.'):undefined,
+      });
+      if (!prompt?.trim()) return;
+      requireFolder(thread.root);
+      const configured=vscode.workspace.getConfiguration('typeTheChange').get<string>('codexPath');
+      const command=await findCodex(configured);
+      requireFolder(thread.root);
+      await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:t('Codex 채팅으로 보내는 중','Sending to the Codex chat')},
+        ()=>queueExplanation(command,thread.id,prompt.trim()));
+      void vscode.window.showInformationMessage(t('원래 Codex 채팅에 요청을 넣었습니다.','Request queued in the original Codex chat.'));
+    } catch(error) {
+      const uncertain=error instanceof RequestError && error.code==='uncertain';
+      void vscode.window.showWarningMessage(uncertain?t('Codex의 접수를 확인하지 못했어요. 다시 보내기 전에 원래 채팅을 확인하세요.','Codex did not confirm delivery. Check the original chat before resending.'):t('Codex 채팅에 보낼 수 없어요. 앱과 CLI를 확인하세요.','Could not send to this Codex chat. Check the app and CLI.'));
+    } finally {ownerSends.delete(thread.id);}
+  }
+
   async function sendAgent(row?: Row | vscode.Uri, planMode = false, explain = false) {
       const treeRow = row && !('scheme' in row) ? row : undefined;
       const thread = treeRow?.thread && threads.find(item => item.id === treeRow.thread?.id && item.agent === treeRow.thread?.agent && item.root === treeRow.thread?.root);
@@ -394,6 +557,19 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
           ...existing.map(thread => ({label:thread.title || thread.id, description:thread.id.slice(-6), thread})),
         ], {placeHolder:t('어느 스레드로 보낼까요?', 'Choose a thread') })) : {thread:undefined});
         if (!thread && !target) return;
+        const selected=target?.thread;
+        if (selected?.cloudUrl) {
+          if (!planMode && !explain) await sendCloudThread(selected);
+          return;
+        }
+        if (selected?.source==='codex-app' && (selected.active || !selected.localRecord)) {
+          if (!planMode) await sendCodexOwner(selected,file,explain);
+          return;
+        }
+        if (selected?.agent==='claude' && selected.active) {
+          void vscode.window.showInformationMessage(t('Claude가 이 로컬 세션을 사용 중입니다. 완료 뒤 이어보거나 클라우드 작업을 연결하세요.','Claude is using this local session. Wait for it to finish or link a cloud session.'));
+          return;
+        }
         const threadId = target?.thread?.id;
         const picked = await vscode.window.showQuickPick([
           ...agentModels[agent].map((model,index) => ({label:model, model,
@@ -429,7 +605,8 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
         const key = `${agent}:${threadId ?? root}`;
         if (running.has(key)) {void vscode.window.showInformationMessage(t('이 스레드에 보낸 요청이 진행 중이에요.', 'This agent already has a request in progress here.'));return;}
         running.set(key, {agent, agenda:intent.split('\n')[0].slice(0,140)});lock = key;refresh();
-        const recorded = target?.thread?.edits.find(edit => edit.file === file)?.excerpt;
+        const recorded = file && target?.thread ? (treeRow?.thread?.edits.find(edit=>edit.file===file)?.excerpt ??
+          (await threadEdits(target.thread).catch(()=>[])).find(edit=>edit.file===file)?.excerpt) : undefined;
         const source = file ? await readWorkspaceFile(root, file).catch(error => {
           if (recorded && error instanceof WorkspaceFileError && error.code === 'missing_file') return '';
           throw error;
@@ -491,17 +668,25 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
     const panel = map;
     if (!panel) return;
     const revision = ++mapRevision;
-    const rendered = await Promise.all(threads.map(async ({id, agent, root, title, agenda, edits, turn}) => {
-      const report = await readReport(root, agent).catch(() => undefined);
-      return {id, agent, title, agenda, edits:edits.map(({excerpt,...edit})=>({...edit,hasExcerpt:!!excerpt})), turn,
-        impact: report?.threadId === id ? report.impact : undefined,
-        hasReply: replies.has(`${agent}:${id}`)};
+    const shown=agents.flatMap(agent=>sliceThreads(agent).slice(0,visibleCount[agent]));
+    const rendered=await Promise.all(shown.map(async thread=>{
+      const {id,agent,root,title,agenda,turn,source,active}=thread;
+      const report=thread.cloudUrl ? await cloudReport(thread) : await readReport(root,agent).catch(()=>undefined);
+      const loaded=requestedHistory.has(id);
+      const edits=thread.cloudUrl
+        ? (report?.files.map(({file,note})=>({file,kind:'edit',pending:false,reason:note,hasExcerpt:false}))??[])
+        : (loaded?await threadEdits(thread).catch(()=>[]):thread.edits).map(({excerpt,...edit})=>({...edit,hasExcerpt:!!excerpt}));
+      return {id,agent,title,agenda,turn,source,active,edits,cloud:!!thread.cloudUrl,
+        historyAvailable:source==='codex-app'&&!loaded&&!edits.length,
+        impact:report && (thread.cloudUrl || report.threadId===id) ? report.impact : undefined,
+        hasReply:replies.has(agent+':'+id)};
     }));
     if (map !== panel || revision !== mapRevision) return;
     void panel.webview.postMessage({
       enabled: showThreads,
       running: [...running.values()],
       threads: rendered,
+      counts:Object.fromEntries(agents.map(agent=>[agent,sliceThreads(agent).length])),
     });
   };
   context.subscriptions.push(tree, changes, watch, visibility, changes.event(postMap),
@@ -511,6 +696,14 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
     }), vscode.workspace.onDidChangeWorkspaceFolders(() => {threads = [];refresh();}),
     vscode.workspace.registerTextDocumentContentProvider('type-the-change-assessment', {provideTextDocumentContent: uri => outputs.get(uri.toString()) ?? ''}),
     vscode.commands.registerCommand('typeTheChange.refreshSidebar', () => {refresh();void scanThreads();}),
+    vscode.commands.registerCommand('typeTheChange.linkClaudeCloud', linkClaudeCloud),
+    vscode.commands.registerCommand('typeTheChange.moreThreads', (agent: Agent) => {
+      if (agents.includes(agent)) {visibleCount[agent]+=threadPageSize;refresh();}
+    }),
+    vscode.commands.registerCommand('typeTheChange.sendToThread', (agent: Agent,id: string) => {
+      const thread=threads.find(item=>item.agent===agent&&item.id===id);
+      if (thread) {const row:Row=new vscode.TreeItem(thread.title||id);row.thread=thread;return sendAgent(row);}
+    }),
     vscode.commands.registerCommand('typeTheChange.openClaudeEvidence', openClaudeEvidence),
     vscode.commands.registerCommand('typeTheChange.openAgentReply', async (agent: Agent, id: string) => {
       const uri = replies.get(`${agent}:${id}`);
@@ -525,17 +718,22 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
       panel.webview.onDidReceiveMessage(message => {
         if (message?.command === 'ready') {void postMap();return;}
         if (message?.command === 'enable' && !showThreads) {void vscode.commands.executeCommand('typeTheChange.toggleLocalThreads');return;}
+        if (message?.command === 'link') {void linkClaudeCloud();return;}
+        if (message?.command === 'more') {void vscode.commands.executeCommand('typeTheChange.moreThreads',message.agent);return;}
         if (message?.command === 'send' && !message.id) {void vscode.commands.executeCommand('typeTheChange.sendAgent');return;}
         const thread = threads.find(thread => thread.id === message?.id && thread.agent === message?.agent);
         if (!thread) return;
-        if (message.command === 'evidence' && typeof message.file==='string') {
+        if (message.command === 'load') {requestedHistory.add(thread.id);void postMap();}
+        else if (message.command === 'evidence' && typeof message.file==='string') {
           void openThreadEvidence(thread,message.file);
-        } else if (message.command === 'file' && thread.edits.some(edit => edit.file === message.file)) {
-          void vscode.commands.executeCommand('typeTheChange.inspectFile', thread.root, message.file);
-        } else if (message.command === 'why' && thread.edits.some(edit => edit.file === message.file)) {
-          const row: Row = new vscode.TreeItem(vscode.Uri.joinPath(vscode.Uri.file(thread.root), message.file));
-          row.thread = thread;
-          void sendAgent(row, false, true);
+        } else if (!thread.cloudUrl && (message.command==='file'||message.command==='why') && typeof message.file==='string') {
+          void threadEdits(thread).then(edits=>{
+            if (!edits.some(edit=>edit.file===message.file)) return;
+            if (message.command==='file') {void vscode.commands.executeCommand('typeTheChange.inspectFile',thread.root,message.file);return;}
+            const row:Row=new vscode.TreeItem(vscode.Uri.joinPath(vscode.Uri.file(thread.root),message.file));
+            row.thread={...thread,edits};
+            void sendAgent(row,false,true);
+          }).catch(()=>{});
         } else if (message.command === 'reply') {
           void vscode.commands.executeCommand('typeTheChange.openAgentReply', thread.agent, thread.id);
         } else if (message.command === 'send') {
@@ -630,6 +828,7 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
       clearTimeout(timer);
       clearInterval(polling);
       abortReviews.abort();
+      codexHistory.dispose();
       map?.dispose();
       gitEnabled?.dispose();
       for (const sub of gitSubscriptions) sub.dispose();

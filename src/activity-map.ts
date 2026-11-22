@@ -2,7 +2,7 @@ export function activityHtml(nonce: string, korean: boolean): string {
   const t = (ko: string, en: string) => korean ? ko : en;
   const labels = JSON.stringify({
     codex: 'Codex', claude: 'Claude Code',
-    empty: t('이 폴더에 로컬 기록 없음', 'No local records for this folder'),
+    empty: t('이 폴더에 로컬 기록 없음', 'No records for this folder'),
     unknown: t('기록된 파일 편집 없음', 'No recorded file edits'),
     send: t('이 스레드로 보내기', 'Send to this thread'),
     reply: t('최근 답변', 'Latest reply'),
@@ -16,6 +16,11 @@ export function activityHtml(nonce: string, korean: boolean): string {
     noReason: t('파일별 설명 없음', 'No file-specific reason'),
     context: t('수정 직전 설명', 'Before the edit'),
     ask: t('이유 묻기', 'Ask why'),
+    more: t('더 보기','Show more'),
+    load: t('변경 보기','Show changes'),
+    link: t('클라우드 스레드 연결','Link cloud session'),
+    cloud: t('클라우드','Cloud'),
+    active: t('진행 중','Active'),
     current: t('현재 파일', 'Current file'),
   });
   return `<!doctype html><html lang="${korean ? 'ko' : 'en'}"><head>
@@ -48,7 +53,7 @@ button:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-off
 @media (max-width: 560px) { #lanes { grid-template-columns: minmax(0, 1fr); } }
 </style></head><body>
 <header><h1>${t('에이전트 작업', 'Agent activity')}</h1><button id="send">${t('보내기', 'Send')}</button></header>
-<button id="enable" hidden>${t('로컬 기록 보기', 'Show local records')}</button>
+<button id="enable" hidden>${t('스레드 보기', 'Show threads')}</button>
 <div id="lanes"></div>
 <script nonce="${nonce}">
 const api = acquireVsCodeApi();
@@ -78,7 +83,8 @@ window.addEventListener('message', ({data}) => {
   const fragment = document.createDocumentFragment();
   for (const agent of ['codex', 'claude']) {
     const lane = element('section', '', 'lane');
-    lane.append(element('h2', labels[agent]));
+    const total=data.counts?.[agent];
+    lane.append(element('h2',labels[agent]+(typeof total==='number'?' · '+total:'')));
     const active = data.running.filter(job => job.agent === agent);
     for (const job of active) {
       const card = element('article');
@@ -94,9 +100,11 @@ window.addEventListener('message', ({data}) => {
       const heading = element('h3', title);
       if (thread.turn) heading.title = labels[thread.turn];
       card.append(heading);
+      if (thread.cloud || thread.active) card.append(element('small',thread.cloud?labels.cloud:labels.active,'muted'));
       if (thread.agenda && thread.agenda !== title) card.append(element('p', thread.agenda, 'muted'));
       const files = element('div', '', 'files');
-      if (!thread.edits.length) files.append(element('small', labels.unknown));
+      if (thread.historyAvailable) files.append(button(labels.load,'load',identity,agent+thread.id+'load'));
+      else if (!thread.edits.length) files.append(element('small',labels.unknown));
       for (const edit of thread.edits) {
         const key = agent+thread.id+edit.file;
         const context = {...identity,file:edit.file};
@@ -118,7 +126,7 @@ window.addEventListener('message', ({data}) => {
         else explanation.append(element('p',labels.noReason));
         const actions = element('div');
         if (edit.hasExcerpt) actions.append(button(labels.current,'file',context,key+'current'));
-        if (!edit.reason) actions.append(button(labels.ask,'why',context,key+'ask'));
+        if (!thread.cloud && !edit.reason) actions.append(button(labels.ask,'why',context,key+'ask'));
         explanation.append(actions);
         details.append(summary,explanation);
         row.append(file,details);
@@ -136,6 +144,8 @@ window.addEventListener('message', ({data}) => {
 
       lane.append(card);
     }
+    if (total>threads.length) lane.append(button(labels.more,'more',{agent},agent+'more'));
+    if (agent==='claude') lane.append(button(labels.link,'link',{},'claudeLink'));
     fragment.append(lane);
   }
   lanes.replaceChildren(fragment);

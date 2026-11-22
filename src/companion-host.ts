@@ -13,13 +13,14 @@ import {isLearningCode} from './learning-context.js';
 import {lessonPrompt} from './lesson.js';
 import {queueExplanation,RequestError} from './codex-request.js';
 const quote=(s:string)=>"'"+s.replaceAll("'","'\\''")+"'";
+export async function createCodexObserver(context:vscode.ExtensionContext){
+ const config=vscode.workspace.getConfiguration('typeTheChange');
+ const command=await findCodex(config.get<string>('codexPath'));
+ return new CodexObserver({command,cwd:vscode.workspace.workspaceFolders?.[0]?.uri.fsPath||homedir(),version:context.extension.packageJSON.version,socket:config.get<string>('codexSocket')||undefined});
+ }
 export function createCompanion(context:vscode.ExtensionContext,render:()=>void){
  let followTimer:NodeJS.Timeout|undefined,followSelection=false,followRevision=0;
- const model=new Companion(async()=>{
-  const config=vscode.workspace.getConfiguration('typeTheChange');
-  const command=await findCodex(config.get<string>('codexPath'));
-  return new CodexObserver({command,cwd:vscode.workspace.workspaceFolders?.[0]?.uri.fsPath||homedir(),version:context.extension.packageJSON.version,socket:config.get<string>('codexSocket')||undefined});
- },()=>{render();scheduleFollow();},undefined,(root,file)=>(vscode.workspace.textDocuments||[]).find(d=>d.uri.scheme==='file'&&d.isDirty&&path.resolve(d.uri.fsPath)===path.resolve(root,file))?.getText(),()=>(vscode.workspace.textDocuments||[]).filter(d=>d.isDirty&&d.uri.scheme==='file').map(d=>d.uri.fsPath));
+ const model=new Companion(()=>createCodexObserver(context),()=>{render();scheduleFollow();},undefined,(root,file)=>(vscode.workspace.textDocuments||[]).find(d=>d.uri.scheme==='file'&&d.isDirty&&path.resolve(d.uri.fsPath)===path.resolve(root,file))?.getText(),()=>(vscode.workspace.textDocuments||[]).filter(d=>d.isDirty&&d.uri.scheme==='file').map(d=>d.uri.fsPath));
  const snapshots=new Map<string,string>();let practice:{uri:string;hash:string;hunk:number;thread?:string}|undefined;
  context.subscriptions.push(model,vscode.workspace.registerTextDocumentContentProvider('ttc-codex-review',{provideTextDocumentContent:uri=>snapshots.get(uri.toString())||''}));
  context.subscriptions.push(vscode.workspace.onDidChangeTextDocument(event=>{

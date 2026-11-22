@@ -6,6 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {homedir, tmpdir} from 'node:os';
 import * as path from 'node:path';
 import type {Agent} from './agent-inbox.js';
+import {cloudClaudeLink} from './agent-history.js';
 
 export function reviewPrompt(file: string, source: string, difference: string, intent: string, korean = false, plan = false, sameThread = false, recorded?: {before:string; after:string}): string {
   const trim = (text: string, limit: number) => Buffer.byteLength(text) <= limit ? text
@@ -86,6 +87,27 @@ function cliEnv(binary: string): NodeJS.ProcessEnv {
 async function claudeOptions(binary: string, cwd: string, signal: AbortSignal): Promise<ClaudeOptions> {
   const {stdout} = await promisify(execFile)(binary, ['--help'], {cwd, env:cliEnv(binary), timeout: 8_000, maxBuffer: 256*1024, signal});
   return {effort:/^\s+--effort\b/m.test(stdout), safeMode:/^\s+--safe-mode\b/m.test(stdout)};
+}
+
+export async function listClaudeAgents(cwd: string, signal: AbortSignal): Promise<unknown> {
+  const binary = await executable('claude');
+  const {stdout} = await promisify(execFile)(binary, ['agents','--json','--all','--cwd',cwd], {
+    cwd, env:cliEnv(binary), timeout:5000, maxBuffer:256*1024, signal, windowsHide:true,
+  });
+  return JSON.parse(stdout);
+}
+
+export async function sendClaudeCloud(cloudUrl: string, cwd: string, prompt: string, signal: AbortSignal): Promise<void> {
+  const url=cloudClaudeLink(cloudUrl);
+  if (!url) throw new Error('A Claude Code cloud session URL is required.');
+  const binary = await executable('claude');
+  const {stdout} = await promisify(execFile)(binary,['--help'],{
+    cwd, env:cliEnv(binary), timeout:8000, maxBuffer:256*1024, signal, windowsHide:true,
+  });
+  if (!/^\s+--cloud\s/m.test(stdout)) throw new Error('Update Claude Code to send to a cloud session.');
+  const response = await run(binary,['-p','--cloud',url,'--output-format','json'],cwd,prompt,signal,cliEnv(binary));
+  const result = JSON.parse(response);
+  if (result?.ok !== true || typeof result.session_id !== 'string') throw new Error('Claude Cloud did not confirm delivery. Check the session before resending.');
 }
 
 export async function runAgentTurn(agent: Agent, target: AgentTurnTarget, prompt: string, signal: AbortSignal): Promise<AgentAnswer> {

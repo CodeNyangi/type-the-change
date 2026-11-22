@@ -18,6 +18,10 @@ export interface LocalThread {
   turn?: 'started' | 'finished';
   updatedAt: number;
   edits: ThreadEdit[];
+  source?: 'codex-app' | 'claude-cli' | 'claude-cloud';
+  active?: boolean;
+  localRecord?: boolean;
+  cloudUrl?: string;
 }
 
 const uuidSuffix = /([a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12})\.jsonl$/i;
@@ -53,12 +57,12 @@ function fileReason(message: string | undefined, file: string): string | undefin
   const paragraph = message.split(/\n\s*\n/).find(part => part.includes(quoted) || part.includes(link));
   return paragraph?.trim().replace(/\s+/g, ' ').slice(0, 260);
 }
-function patchExcerpt(value: unknown) {
+export function patchExcerpt(value: unknown) {
   if (typeof value !== 'string' || value.length > 128 * 1024) return;
   const hunk = parseHunks(value).find(item => item.before !== item.after && item.before.length + item.after.length <= 16 * 1024);
   if (hunk) return {before:hunk.before, after:hunk.after};
 }
-function addEvidence(file: string, pending: boolean, message?: string, excerpt?: ThreadEdit['excerpt']) {
+export function addEvidence(file: string, pending: boolean, message?: string, excerpt?: ThreadEdit['excerpt']) {
   if (pending) return {};
   const reason = fileReason(message, file);
   // A message that points at another file is not a useful fallback.
@@ -78,13 +82,13 @@ function objectLines(text: string): Json[] {
   }
   return lines;
 }
-function relativeFile(root: string, cwd: string, value: unknown): string | undefined {
+export function relativeFile(root: string, cwd: string, value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 4096) return;
   const file = path.relative(root, path.resolve(cwd, value)).split(path.sep).join('/');
   try { validateRelativePath(file); return file; }
   catch { return; }
 }
-function scopeFor(cwd: string, roots: readonly string[]) {
+export function scopeFor(cwd: string, roots: readonly string[]) {
   if (!path.isAbsolute(cwd)) return;
   return roots.filter(root => {
     const distance = path.relative(root, cwd);
@@ -190,7 +194,7 @@ function parseThreadEdits(agent: Agent, id: string, cwd: string, root: string, t
     }
   }
   for (const {file,kind} of pending.values()) remember({file,kind,pending:true});
-  return {id, agent, root, cwd, title, agenda, turn, updatedAt, edits: [...edits.values()].reverse()};
+  return {id, agent, root, cwd, title, agenda, turn, updatedAt, localRecord:true, edits: [...edits.values()].reverse()};
 }
 
 async function entries(directory: string) {
@@ -242,7 +246,7 @@ export class LocalThreadReader {
       this.readAgent('codex', codex, roots),
       this.readAgent('claude', projects, roots),
     ]);
-    const selected = batches.flat().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
+    const selected = batches.flat().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30);
     if (selected.some(thread => thread.agent === 'codex')) await this.updateNames();
     return selected.map(thread => ({
       ...thread,

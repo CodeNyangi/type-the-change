@@ -6,7 +6,7 @@
 2. Pick a thread and file to read the explanation beside the recorded diff. Use **Ask why** if you need more context.
 3. To send a request, choose **Send to an Agent**, then pick the provider, model, effort and thread.
 
-The sidebar reads recent local sessions for the open project. Sending requires a signed-in Codex or Claude Code CLI. The right sidebar opens the existing Codex learning reader.
+The sidebar finds Codex app chats and local Claude Code sessions for the open project. Claude cloud sessions can be linked by URL. Sending requires a signed-in CLI. The right sidebar opens the existing Codex learning reader.
 
 [Install](https://marketplace.visualstudio.com/items?itemName=CodeNyangi.type-the-change) · [한국어](README.ko.md)
 
