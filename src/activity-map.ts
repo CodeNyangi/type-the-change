@@ -132,7 +132,17 @@ window.addEventListener('message', ({data}) => {
         row.append(file,details);
         files.append(row);
       }
-      card.append(files, button(labels.send, 'send', identity, agent+thread.id, 'send'));
+      card.append(files);
+      if (!(agent==='claude' && thread.active && !thread.cloud)) {
+        const send=button(labels.send,'send',identity,agent+thread.id,'send');
+        send.disabled=!!thread.sending;
+        card.append(send);
+      }
+      if (thread.delivery) {
+        const status=element('small',thread.delivery,'muted');
+        status.setAttribute('role','status');
+        card.append(status);
+      }
       if (thread.hasReply) card.append(button(labels.reply, 'reply', identity, agent+thread.id+'reply', 'send'));
       if (thread.impact) {
         const details = element('details');

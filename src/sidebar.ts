@@ -47,6 +47,7 @@ const viewId = 'typeTheChange.sidebar';
 const localHistoryKey = 'showLocalAgentThreads';
 const cloudLinksKey = 'claudeCloudLinks';
 const threadPageSize = 8;
+type Delivery = 'sending' | 'queued' | 'uncertain' | 'failed';
 type CloudLink = {root: string; url: string; title: string; addedAt: number};
 const gitStatus = {addedToIndex:1, deletedFromIndex:2, deleted:6, untracked:7} as const;
 
@@ -92,6 +93,19 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
   const visibleCount: Record<Agent,number> = {codex:threadPageSize,claude:threadPageSize};
   const requestedHistory = new Set<string>();
   const ownerSends = new Set<string>();
+  const delivery = new Map<string, Delivery>();
+  function setDelivery(id: string, state: Delivery) {
+    delivery.delete(id);
+    delivery.set(id,state);
+    if (delivery.size>40) delivery.delete(delivery.keys().next().value!);
+    refresh();
+  }
+  function deliveryLabel(state: Delivery) {
+    if (state==='sending') return t('보내는 중','Sending');
+    if (state==='queued') return t('접수됨','Queued');
+    if (state==='failed') return t('전송 실패','Send failed');
+    return t('접수 확인 필요','Check delivery');
+  }
   let claudeCatalog = {key:'', nextCheck:0, threads:[] as LocalThread[]};
   const outputs = new Map<string, string>();
   const replies = new Map<string, vscode.Uri>();
@@ -297,7 +311,8 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
     });
     row.thread=thread;
     row.contextValue='ttcAgentThread';
-    row.description=threadDescription(thread);
+    const state=delivery.get(thread.id);
+    row.description=threadDescription(thread)+(state?' · '+deliveryLabel(state):'');
     row.tooltip=thread.cloudUrl ? t('연결한 Claude Code 클라우드 작업','Linked Claude Code cloud session') : undefined;
     return row;
   }
@@ -498,10 +513,12 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
       });
       if (!prompt?.trim()) return;
       requireFolder(thread.root);
+      setDelivery(thread.id,'sending');
       await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:t('Claude 클라우드로 보내는 중','Sending to Claude Cloud')},
         ()=>sendClaudeCloud(url,thread.root,prompt.trim(),abortReviews.signal));
-      void vscode.window.showInformationMessage(t('Claude 클라우드 스레드에 요청을 넣었습니다.','Request queued in the Claude cloud session.'));
+      setDelivery(thread.id,'queued');
     } catch {
+      setDelivery(thread.id,'uncertain');
       void vscode.window.showWarningMessage(t('Claude 클라우드의 접수를 확인하지 못했어요. 다시 보내기 전에 원래 스레드를 확인하세요.','Claude Cloud did not confirm delivery. Check the original session before resending.'));
     } finally {ownerSends.delete(url);}
   }
@@ -523,11 +540,13 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
       const configured=vscode.workspace.getConfiguration('typeTheChange').get<string>('codexPath');
       const command=await findCodex(configured);
       requireFolder(thread.root);
+      setDelivery(thread.id,'sending');
       await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:t('Codex 채팅으로 보내는 중','Sending to the Codex chat')},
         ()=>queueExplanation(command,thread.id,prompt.trim()));
-      void vscode.window.showInformationMessage(t('원래 Codex 채팅에 요청을 넣었습니다.','Request queued in the original Codex chat.'));
+      setDelivery(thread.id,'queued');
     } catch(error) {
       const uncertain=error instanceof RequestError && error.code==='uncertain';
+      setDelivery(thread.id,uncertain?'uncertain':'failed');
       void vscode.window.showWarningMessage(uncertain?t('Codex의 접수를 확인하지 못했어요. 다시 보내기 전에 원래 채팅을 확인하세요.','Codex did not confirm delivery. Check the original chat before resending.'):t('Codex 채팅에 보낼 수 없어요. 앱과 CLI를 확인하세요.','Could not send to this Codex chat. Check the app and CLI.'));
     } finally {ownerSends.delete(thread.id);}
   }
@@ -676,7 +695,9 @@ export function registerChangeSidebar(context: vscode.ExtensionContext): void {
       const edits=thread.cloudUrl
         ? (report?.files.map(({file,note})=>({file,kind:'edit',pending:false,reason:note,hasExcerpt:false}))??[])
         : (loaded?await threadEdits(thread).catch(()=>[]):thread.edits).map(({excerpt,...edit})=>({...edit,hasExcerpt:!!excerpt}));
+      const state=delivery.get(id);
       return {id,agent,title,agenda,turn,source,active,edits,cloud:!!thread.cloudUrl,
+        delivery:state && deliveryLabel(state),sending:state==='sending',
         historyAvailable:source==='codex-app'&&!loaded&&!edits.length,
         impact:report && (thread.cloudUrl || report.threadId===id) ? report.impact : undefined,
         hasReply:replies.has(agent+':'+id)};
