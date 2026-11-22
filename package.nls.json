@@ -24,5 +24,13 @@
   "command.refreshChats": "Type the Change: Refresh Codex Activity",
   "command.setupLive": "Type the Change: Connect Codex Live Notifications",
   "command.openCodexThread": "Type the Change: Open Original Codex Chat",
-  "codexSocket.description": "Unix socket of an existing shared Codex server. When empty, try the default connection then read saved history. TTC never starts an agent."
+  "codexSocket.description": "Unix socket of an existing shared Codex server. When empty, try the default connection then read saved history. TTC never starts an agent.",
+  "view.agents": "Type the Change Agents",
+  "command.sendAgent": "Type the Change: Send to an Agent",
+  "command.activityMap": "Type the Change: Open Activity Map",
+  "command.openSidebar": "Type the Change: Focus Agent Sidebar",
+  "command.toggleLocalThreads": "Type the Change: Toggle Local Agent Threads",
+  "command.refreshSidebar": "Type the Change: Refresh Agent Sidebar",
+  "command.planWithAgent": "Type the Change: Practice this file",
+  "command.explainThreadFile": "Type the Change: Ask why this changed"
 }

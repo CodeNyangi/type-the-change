@@ -2,7 +2,7 @@
   "name": "type-the-change",
   "displayName": "Type the Change",
   "description": "%description%",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "publisher": "CodeNyangi",
   "license": "MIT",
   "type": "module",
@@ -129,6 +129,39 @@
       {
         "command": "typeTheChange.openCodexThread",
         "title": "%command.openCodexThread%"
+      },
+      {
+        "command": "typeTheChange.sendAgent",
+        "title": "%command.sendAgent%",
+        "icon": "$(send)"
+      },
+      {
+        "command": "typeTheChange.activityMap",
+        "title": "%command.activityMap%",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "typeTheChange.openSidebar",
+        "title": "%command.openSidebar%"
+      },
+      {
+        "command": "typeTheChange.toggleLocalThreads",
+        "title": "%command.toggleLocalThreads%",
+        "icon": "$(history)"
+      },
+      {
+        "command": "typeTheChange.refreshSidebar",
+        "title": "%command.refreshSidebar%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "typeTheChange.planWithAgent",
+        "title": "%command.planWithAgent%"
+      },
+      {
+        "command": "typeTheChange.explainThreadFile",
+        "title": "%command.explainThreadFile%",
+        "icon": "$(question)"
       }
     ],
     "menus": {
@@ -144,6 +177,60 @@
           "command": "typeTheChange.moveView",
           "when": "view == typeTheChange.launcher",
           "group": "navigation@1"
+        },
+        {
+          "command": "typeTheChange.sendAgent",
+          "when": "view == typeTheChange.sidebar",
+          "group": "navigation@1"
+        },
+        {
+          "command": "typeTheChange.activityMap",
+          "when": "view == typeTheChange.sidebar",
+          "group": "navigation@2"
+        },
+        {
+          "command": "typeTheChange.refreshSidebar",
+          "when": "view == typeTheChange.sidebar",
+          "group": "2_setup"
+        },
+        {
+          "command": "typeTheChange.mcpConfig",
+          "when": "view == typeTheChange.sidebar",
+          "group": "2_setup"
+        },
+        {
+          "command": "typeTheChange.toggleLocalThreads",
+          "when": "view == typeTheChange.sidebar",
+          "group": "2_setup"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "typeTheChange.sendAgent",
+          "when": "view == typeTheChange.sidebar && ((viewItem == ttcReviewableFile || viewItem == ttcThreadFile) || viewItem == ttcAgentThread)",
+          "group": "inline@1"
+        },
+        {
+          "command": "typeTheChange.planWithAgent",
+          "when": "view == typeTheChange.sidebar && (viewItem == ttcReviewableFile || viewItem == ttcThreadFile)",
+          "group": "2_typing"
+        },
+        {
+          "command": "typeTheChange.explainThreadFile",
+          "when": "view == typeTheChange.sidebar && viewItem == ttcThreadFile",
+          "group": "inline@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "typeTheChange.sendAgent",
+          "when": "resourceScheme == file",
+          "group": "navigation@90"
+        },
+        {
+          "command": "typeTheChange.planWithAgent",
+          "when": "resourceScheme == file",
+          "group": "navigation@91"
         }
       ]
     },
@@ -165,6 +252,11 @@
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t",
         "when": "typeTheChange.active"
+      },
+      {
+        "command": "typeTheChange.openSidebar",
+        "key": "ctrl+alt+shift+t",
+        "mac": "cmd+alt+shift+t"
       }
     ],
     "problemMatchers": [
@@ -189,6 +281,13 @@
           "title": "Type the Change",
           "icon": "assets/toolbar-light.svg"
         }
+      ],
+      "activitybar": [
+        {
+          "id": "typeTheChangeAgents",
+          "title": "%view.agents%",
+          "icon": "assets/toolbar-dark.svg"
+        }
       ]
     },
     "views": {
@@ -197,6 +296,12 @@
           "id": "typeTheChange.launcher",
           "name": "Type the Change",
           "type": "webview"
+        }
+      ],
+      "typeTheChangeAgents": [
+        {
+          "id": "typeTheChange.sidebar",
+          "name": "%view.agents%"
         }
       ]
     },

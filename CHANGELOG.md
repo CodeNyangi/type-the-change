@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — local agent sidebar preview
+
+- Add the Activity Bar agent sidebar and activity map for local Codex and Claude Code threads.
+- Send to a new or recent thread with model and effort choices. Default to GPT-6.2 Sol or Claude Opus 5.5 at Medium.
+- Offer Luna and pinned Haiku 4.5 for low-cost requests. Show Claude model IDs reported by the CLI when available.
+- Open a thread's recorded change beside its explanation, compare it with the current file, and ask the same thread why it made the change.
+- Support explicit links between an agent report, a cloud conversation and local Git evidence.
+
 ## 0.8.1 — 2026-11-02
 
 - Remove repeated empty-screen instructions and the primary explanation-request button. Existing explanations appear directly; optional requests have a named target and a separate send confirmation.

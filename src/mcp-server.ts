@@ -6,6 +6,7 @@ import { isAbsolute } from 'node:path';
 import { stat } from 'node:fs/promises';
 import { parsePlan, validatePlanAgainstFiles } from './plan.js';
 import { readWorkspaceFile, readBridgeFile, writeBridgeFile, assertDistinctWorkspaceFiles, WorkspaceFileError } from './workspace-files.js';
+import {assessmentSchema, planFile, reportFile, reportSchema, type Agent} from './agent-inbox.js';
 
 const stepSchema = z.object({
   file: z.string().min(1).max(512),
@@ -40,7 +41,7 @@ function fileFailure(error: unknown) {
 }
 
 /** Hosts supply the model and its billing. This server handles local evidence only. */
-export function createTypingMcpServer(workspace: string): McpServer {
+export function createTypingMcpServer(workspace: string, agent?: Agent): McpServer {
   const server = new McpServer({ name: 'type-the-change', version: '0.1.0' }, {
     instructions: [
       'Type the Change is a human typing and code review workflow.',
@@ -49,6 +50,8 @@ export function createTypingMcpServer(workspace: string): McpServer {
       'Insertion requires surrounding before context. Steps apply sequentially in the proposed order.',
       'propose_typing_plan sends a local proposal to the VS Code extension. It does not change source code, start typing, run tests, or prove correctness.',
       'The person chooses to load the plan and types the changes in their native editor. Do not apply the changes with another tool.',
+      'Include a concrete prediction or example in the reason, plus an assessment of impact, risk, and verification when available.',
+      'If asked to review already-applied changes, use report_change_review with exact workspace paths and describe the evidence and uncertainties.',
       'Use get_typing_status only as a last saved UI status; a text match does not certify understanding or semantic correctness.',
       'The MCP server does not call a model or read authentication tokens. The connected host owns its own model access; ChatGPT/Codex plan usage follows that host’s supported sign-in and limits.',
     ].join(' '),
@@ -68,10 +71,10 @@ export function createTypingMcpServer(workspace: string): McpServer {
 
   server.registerTool('propose_typing_plan', {
     title: 'Propose changes for a person to type',
-    description: 'Validate a small sequential typing plan against saved workspace files and atomically replace the local pending proposal. The extension offers the plan to the person; it never applies the edits. This writes only .type-the-change/plan.json. An existing pending proposal is replaced, but source files and the active typing session are unchanged.',
-    inputSchema: z.object({ plan: planSchema }).strict(),
+    description: 'Validate a sequential typing plan and publish it to the local VS Code sidebar. Each configured agent has its own latest proposal. Source files and the active typing session are unchanged.',
+    inputSchema: z.object({ plan: planSchema, ...(agent ? {assessment: assessmentSchema.optional()} : {}) }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ plan: proposed }) => {
+  }, async ({ plan: proposed, assessment }) => {
     let plan;
     try { plan = parsePlan(JSON.stringify(proposed)); }
     catch { return failed('invalid_plan'); }
@@ -83,12 +86,31 @@ export function createTypingMcpServer(workspace: string): McpServer {
       catch { return failed('source_does_not_match'); }
       // Re-read before publishing so a changed disk file cannot quietly pass a stale preflight.
       for (const [file, text] of files) if (await readWorkspaceFile(workspace, file) !== text) return failed('source_changed');
-      await writeBridgeFile(workspace, 'plan.json', plan);
+      await writeBridgeFile(workspace, agent ? planFile(agent) : 'plan.json', agent ? {plan, assessment} : plan);
       return result({
         status: 'proposed', title: plan.title, stepCount: plan.steps.length,
         planHash: hash(JSON.stringify(plan)), sourceFiles: [...files.keys()],
         requiresHumanTyping: true, sourceFilesChanged: false,
       }, 'Proposal prepared for the person to load in VS Code. No source code was changed, and no tests were run.');
+    } catch (error) { return fileFailure(error); }
+  });
+
+  if (agent) server.registerTool('report_change_review', {
+    title: 'Send a review to the VS Code sidebar',
+    description: 'Report already-applied changes or review findings with affected files, impact, risk and verification. Replaces your latest review. Does not edit source, run checks, or attribute changes detected by Git.',
+    inputSchema: reportSchema,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  }, async report => {
+    try {
+      for (const file of new Set(report.files.map(item => item.file))) {
+        try {await readWorkspaceFile(workspace, file);}
+        catch (error) {
+          // Deleted files can still be described in a review.
+          if (!(error instanceof WorkspaceFileError) || error.code !== 'missing_file') throw error;
+        }
+      }
+      await writeBridgeFile(workspace, reportFile(agent), report);
+      return result({status: 'reported', agent}, 'Review sent to the VS Code sidebar.');
     } catch (error) { return fileFailure(error); }
   });
 
@@ -117,9 +139,11 @@ export function parseWorkspaceArgument(args: string[]): string {
 }
 
 export async function runMcpServer(args: string[]): Promise<void> {
-  const workspace = parseWorkspaceArgument(args);
+  const agent = args.length === 4 && args[2] === '--agent' ? args[3] : undefined;
+  if (args.length !== 2 && agent !== 'codex' && agent !== 'claude') throw new Error('Invalid agent.');
+  const workspace = parseWorkspaceArgument(args.slice(0, 2));
   if (!(await stat(workspace)).isDirectory()) throw new Error('Workspace unavailable.');
-  const handle = serveStdio(() => createTypingMcpServer(workspace));
+  const handle = serveStdio(() => createTypingMcpServer(workspace, agent as Agent | undefined));
   for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => { void handle.close(); });
 }
 

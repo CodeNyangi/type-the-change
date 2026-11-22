@@ -16,10 +16,10 @@ if(marketplace){
     .replace('[한국어](README.ko.md)','[한국어](#korean)')
     .replace('[English](README.md)','[English](#type-the-change)')
     .replace(/^.*\]\(docs\/guide.*$/m,language==='ko'
-      ? '[사용법](#korean-guide) · [개인정보](#privacy-and-local-data) · [검증](#verification) · [MIT](LICENSE)'
-      : '[Guide](#guide) · [Privacy](#privacy-and-local-data) · [Verification](#verification) · [MIT](LICENSE)');
+      ? '[에이전트 설정](#agent-setup) · [사용법](#korean-guide) · [개인정보](#privacy-and-local-data) · [검증](#verification) · [MIT](LICENSE)'
+      : '[Agent setup](#agent-setup) · [Guide](#guide) · [Privacy](#privacy-and-local-data) · [Verification](#verification) · [MIT](LICENSE)');
   const section=(file,title)=>'## '+title+'\n\n'+read(file).replace(/^# .+\n+/,'').replace(/^## /gm,'### ').replaceAll('(../PRIVACY.md)','(#privacy-and-local-data)').replaceAll('(../assets/','(assets/').replace('[0.7.0 verification](verification-0.7.0.md)','the 0.7.0 verification record');
-  const content=[overview('README.md','en'),'## Korean\n\n'+overview('README.ko.md','ko').replace(/^# .+\n+/,''),section('docs/guide.md','Guide'),section('docs/guide.ko.md','Korean guide'),section('PRIVACY.md','Privacy and local data'),section(`docs/verification-${manifest.version}.md`,'Verification')].join('\n');
+  const content=[overview('README.md','en'),'## Korean\n\n'+overview('README.ko.md','ko').replace(/^# .+\n+/,''),section('docs/agent-workflow.md','Agent setup'),section('docs/guide.md','Guide'),section('docs/guide.ko.md','Korean guide'),section('PRIVACY.md','Privacy and local data'),section(`docs/verification-${manifest.version}.md`,'Verification')].join('\n');
   mkdirSync('artifacts',{recursive:true});writeFileSync('artifacts/marketplace-README.md',content);
   writeFileSync('artifacts/marketplace.vscodeignore',read('.vscodeignore').replace(/^!README\.md\r?\n/m,''));
   extra.push('--readme-path','artifacts/marketplace-README.md','--ignoreFile','artifacts/marketplace.vscodeignore');

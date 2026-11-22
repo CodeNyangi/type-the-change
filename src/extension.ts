@@ -13,10 +13,12 @@ import {newJudgment,predict,beginReview,decide,invalidateJudgment,type Judgment,
 import {pickFiles,eligibleFile} from './file-picker.js';
 import {TaskChecks,type CheckResult} from './task-checks.js';
 import {text as t} from './locale.js';
+import {readProposal, agentNames, type Agent, type Assessment} from './agent-inbox.js';
+import {registerChangeSidebar} from './sidebar.js';
 import {WorktreeTracker,summarizeWorkspace,git as readGit,type WorkspaceOverview} from './worktrees.js';
 
 type ReviewRecord={step:number;file:string;prediction:string;evidence:string;decision:Decision;sourceHash:string;recordedAt:string;check?:CheckResult};
-type Session={root:string;sourceHead?:string;sourceRoot?:string;contextChanged?:boolean;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;ready:boolean;guidedStart?:boolean;revision:number;check?:CheckResult;checking?:boolean;demoTask?:vscode.Task;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
+type Session={root:string;sourceHead?:string;sourceRoot?:string;contextChanged?:boolean;plan:Plan;index:number;document:vscode.TextDocument;resolved:ResolvedStep;hash:string;complete:boolean;judgment:Judgment;records:ReviewRecord[];replan?:boolean;deciding?:boolean;ready:boolean;guidedStart?:boolean;revision:number;check?:CheckResult;checking?:boolean;demoTask?:vscode.Task;agent?:Agent;assessment?:Assessment;originalFiles:Map<string,string>;expectedFiles:Map<string,string>;documents:Map<string,vscode.TextDocument>};
 const USAGE='https://chatgpt.com/settings/usage';
 export function activate(context:vscode.ExtensionContext){
   let session:Session|undefined,busy=false,timer:NodeJS.Timeout|undefined,generationAbort:AbortController|undefined;
@@ -114,7 +116,7 @@ export function activate(context:vscode.ExtensionContext){
     if(s.check&&s.check.status!=='running'&&s.check.sourceHash!==sourceHash(s))s.check={...s.check,status:'stale'};
     // Keep the guide mode and frame while preparing the next source. A
     // file-less loading state would recreate the companion and guide iframes.
-    panel.update({...common,busy:!s.ready||busy,handoff:!s.ready,phase:!s.ready?t('변경 여는 중','Opening change'):composer.phase,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:inspectionMessages[inspection.status],contextChanged:!!s.contextChanged,canContinue:s.ready&&!s.contextChanged&&!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:s.ready&&!s.contextChanged&&!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan,check:s.check,checking:!!s.checking,guidedStart:s.guidedStart});
+    panel.update({...common,busy:!s.ready||busy,handoff:!s.ready,phase:!s.ready?t('변경 여는 중','Opening change'):composer.phase,title:s.plan.title,file:step.file,line:s.document.positionAt(s.resolved.start).line+1,reason:step.reason,before:s.resolved.before,after:s.resolved.after,step:s.index+1,total:s.plan.steps.length,status:inspection.status,message:inspectionMessages[inspection.status],contextChanged:!!s.contextChanged,canContinue:s.ready&&!s.contextChanged&&!unavailable&&inspection.status!=='outside',complete,judgment:{...s.judgment},canKeep:s.ready&&!s.contextChanged&&!unavailable&&inspection.status!=='outside'&&inspection.status!=='untouched',replan:!!s.replan,check:s.check,checking:!!s.checking,guidedStart:s.guidedStart,agent:s.agent?agentNames[s.agent]:undefined,assessment:s.assessment});
     if(!s.ready)return;
     status.text=complete?'$(check) '+t('판단 기록됨','Decision recorded'):`$(edit) ${s.index+1}/${s.plan.steps.length}`;
     status.tooltip='Type the Change';status.command='typeTheChange.start';
@@ -154,7 +156,7 @@ export function activate(context:vscode.ExtensionContext){
     if(session!==s)return;
     panel.releaseFocus();render();
   }
-  async function startPlan(plan:Plan,root:string,requestEpoch?:number,guidedStart=false){
+  async function startPlan(plan:Plan,root:string,requestEpoch?:number,guidedStart=false,details?:Pick<Session,'demoTask'|'agent'|'assessment'>){
     local();const epoch=requestEpoch??++sessionEpoch;if(epoch!==sessionEpoch)return;
     await assertDistinctWorkspaceFiles(root,plan.steps.map(step=>step.file));if(epoch!==sessionEpoch)return;
     const files=new Map<string,string>(),documents=new Map<string,vscode.TextDocument>();
@@ -169,7 +171,7 @@ export function activate(context:vscode.ExtensionContext){
     const sourceTree=workspaceOverview?.worktrees.find(tree=>tree.current&&(canonicalRoot===tree.path||canonicalRoot.startsWith(tree.path+path.sep)));
     const sourceRoot=sourceTree?.path||await readGit(root,['rev-parse','--show-toplevel']).then(value=>value.trim()).catch(error=>{if(error?.code===128)return undefined;throw error;});
     const sourceHead=sourceRoot?await readGit(sourceRoot,['rev-parse','--verify','HEAD']).then(value=>value.trim()).catch(error=>{if(error?.code===128)return undefined;throw error;}):undefined;if(epoch!==sessionEpoch)return;
-    const current:Session={root,sourceHead,sourceRoot,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],ready:false,guidedStart,revision:0,originalFiles:new Map(files),expectedFiles:files,documents};session=current;
+    const current:Session={root,sourceHead,sourceRoot,plan,index:0,document,resolved:resolveStep(text,first),hash:createHash('sha256').update(JSON.stringify(plan)).digest('hex'),complete:false,judgment:newJudgment(),records:[],ready:false,guidedStart,revision:0,originalFiles:new Map(files),expectedFiles:files,documents,...details};session=current;
     if(guidedStart)predict(current.judgment,plan.intent.slice(0,280));
     await vscode.commands.executeCommand('setContext','typeTheChange.active',true);
     if(session!==current||epoch!==sessionEpoch)return;
@@ -274,21 +276,31 @@ export function activate(context:vscode.ExtensionContext){
     await startPlan(plan,root,epoch);
   }
   async function loadPending(fromRoot?:string){const epoch=++sessionEpoch,root=fromRoot||await rootFolder();if(root&&epoch===sessionEpoch){const data=await readBridgeFile(root,'plan.json');if(epoch!==sessionEpoch)return;if(!data)throw Error(t("MCP에서 받은 수정안이 없어요.","No MCP suggestion has arrived yet."));await startPlan(parsePlan(JSON.stringify(data)),root,epoch);}}
+  async function openAgentPlan(root:string,agent?:Agent){
+    if(busy)return;
+    local();ensureSelectedRoot(root);
+    if(agent!==undefined&&agent!=='codex'&&agent!=='claude')return;
+    const epoch=++sessionEpoch,proposal=await readProposal(root,agent);
+    if(epoch!==sessionEpoch)return;
+    ensureSelectedRoot(root);
+    if(!proposal)throw Error(t('제안을 찾을 수 없어요.','That proposal is unavailable.'));
+    await startPlan(proposal.plan,root,epoch,false,{agent,assessment:proposal.assessment});
+  }
   async function demo(){
     local();const epoch=++sessionEpoch,root=await mkdtemp(path.join(tmpdir(),'type-the-change-'));if(epoch!==sessionEpoch)return;
     const code=await readFile(context.asAbsolutePath('examples/quickstart/tasks.js'),'utf8'),originalPlan=parsePlan(await readFile(context.asAbsolutePath('examples/quickstart/plan.json'),'utf8'));
     const plan:Plan={...originalPlan,title:t(originalPlan.title,'Hide completed tasks'),intent:t(originalPlan.intent,'Only unfinished tasks remain in the list.'),steps:originalPlan.steps.map(step=>({...step,reason:t(step.reason,'filter keeps tasks whose done value is false. Check that an empty list and an all-completed list both stay empty.')}))};
     if(epoch!==sessionEpoch)return;await writeFile(path.join(root,'tasks.js'),code,{flag:'wx'});
     await writeFile(path.join(root,'check.mjs'),await readFile(context.asAbsolutePath('examples/quickstart/check.mjs'),'utf8'),{flag:'wx'});
-    await startPlan(plan,root,epoch,true);
-    if(session?.root===root){session.demoTask=new vscode.Task({type:'type-the-change-demo'},vscode.TaskScope.Workspace,t('할 일 목록 확인','Check task list'),'Type the Change',new vscode.ProcessExecution(process.execPath,[path.join(root,'check.mjs')],{cwd:root,env:{ELECTRON_RUN_AS_NODE:'1'}}),['$type-the-change']);render();}
+    const demoTask=new vscode.Task({type:'type-the-change-demo'},vscode.TaskScope.Workspace,t('할 일 목록 확인','Check task list'),'Type the Change',new vscode.ProcessExecution(process.execPath,[path.join(root,'check.mjs')],{cwd:root,env:{ELECTRON_RUN_AS_NODE:'1'}}),['$type-the-change']);
+    await startPlan(plan,root,epoch,true,{demoTask});
   }
   async function mcpConfig(){
     const root=await rootFolder();if(!root)return;
     const server=context.asAbsolutePath('dist/mcp-server.cjs');
-    const config={mcpServers:{'type-the-change':{command:'node',args:[server,'--workspace',root]}}};
-    const toml=`[mcp_servers.type-the-change]\ncommand = "node"\nargs = ${JSON.stringify([server,'--workspace',root])}`;
-    const text=`# Type the Change · MCP\n\nNode.js 22+가 필요합니다. Codex 등 MCP 클라이언트에 이 서버를 연결하세요. 모델 사용량은 해당 클라이언트의 로그인·구독을 따릅니다. 서버 자체는 AI 요청을 하지 않습니다.\n\n## Codex config.toml\n\n\`\`\`toml\n${toml}\n\`\`\`\n\n## JSON을 사용하는 클라이언트\n\n\`\`\`json\n${JSON.stringify(config,null,2)}\n\`\`\`\n\n선택한 작업 폴더 안에서 read_file, propose_typing_plan, get_typing_status를 제공합니다. 코드를 자동으로 수정하는 도구는 없습니다. 받은 계획은 Type the Change: Open MCP Plan으로 엽니다. .type-the-change/ 폴더는 Git에서 제외하세요.\n`;
+    const config={mcpServers:{'type-the-change-claude':{type:'stdio',command:'node',args:[server,'--workspace',root,'--agent','claude']}}};
+    const toml=`[mcp_servers.type-the-change-codex]\ncommand = "node"\nargs = ${JSON.stringify([server,'--workspace',root,'--agent','codex'])}`;
+    const text=`# Type the Change · MCP\n\nNode.js 22+가 필요합니다. Codex 등 MCP 클라이언트에 이 서버를 연결하세요. 모델 사용량은 해당 클라이언트의 로그인·구독을 따릅니다. 서버 자체는 AI 요청을 하지 않습니다.\n\n## Codex config.toml\n\n\`\`\`toml\n${toml}\n\`\`\`\n\n## Claude Code · .mcp.json\n\n\`\`\`json\n${JSON.stringify(config,null,2)}\n\`\`\`\n\n선택한 작업 폴더 안에서 read_file, propose_typing_plan, get_typing_status를 제공합니다. 코드를 자동으로 수정하는 도구는 없습니다. 받은 제안과 검토는 왼쪽 Type the Change 에이전트 사이드바에서 엽니다. .type-the-change/ 폴더는 Git에서 제외하세요.\n`;
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument({language:'markdown',content:text}));
   }
   async function review(){
@@ -351,6 +363,9 @@ export function activate(context:vscode.ExtensionContext){
     lastSource=editor.document.uri;workspaceTracker.track(session?.root,panel.visible);
     if(!session&&!busy&&!chatRoot)render();
   }));
+  context.subscriptions.push(vscode.commands.registerCommand('typeTheChange.openAgentPlan',(root:string,agent?:Agent)=>guard(()=>openAgentPlan(root,agent))));
+  const workbench:Partial<typeof vscode.window>=vscode.window;
+  if(workbench.createTreeView)registerChangeSidebar(context);
   if(vscode.window.registerWebviewViewProvider){
     panel.useSidebar();
     context.subscriptions.push(vscode.window.registerWebviewViewProvider('typeTheChange.launcher',{

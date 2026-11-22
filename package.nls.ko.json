@@ -24,5 +24,13 @@
   "command.refreshChats": "Type the Change: Codex 기록 새로고침",
   "command.setupLive": "Type the Change: Codex 실시간 알림 연결",
   "command.openCodexThread": "Type the Change: 원래 Codex 채팅 열기",
-  "codexSocket.description": "이미 실행 중인 Codex 공유 서버의 Unix 소켓 경로입니다. 비워 두면 기본 연결을 확인하고 기록 조회로 전환합니다. TTC는 에이전트를 시작하지 않습니다."
+  "codexSocket.description": "이미 실행 중인 Codex 공유 서버의 Unix 소켓 경로입니다. 비워 두면 기본 연결을 확인하고 기록 조회로 전환합니다. TTC는 에이전트를 시작하지 않습니다.",
+  "view.agents": "Type the Change 에이전트",
+  "command.sendAgent": "Type the Change: 에이전트에 보내기",
+  "command.activityMap": "Type the Change: 작업 지도 열기",
+  "command.openSidebar": "Type the Change: 에이전트 사이드바 열기",
+  "command.toggleLocalThreads": "Type the Change: 로컬 스레드 표시 전환",
+  "command.refreshSidebar": "Type the Change: 에이전트 사이드바 새로고침",
+  "command.planWithAgent": "Type the Change: 이 파일로 따라치기",
+  "command.explainThreadFile": "Type the Change: 이 변경의 이유 묻기"
 }
